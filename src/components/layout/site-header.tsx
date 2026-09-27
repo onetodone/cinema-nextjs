@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { ClapperboardIcon } from 'lucide-react'
 import { MainNav, MainNavFallback } from '@/components/layout/main-nav'
 import { ThemeToggle } from '@/components/layout/theme-toggle'
+import { UserMenu } from '@/components/layout/user-menu'
 import { APP_NAME } from '@/lib/site'
 
 export function SiteHeader() {
@@ -17,14 +18,16 @@ export function SiteHeader() {
       <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-2 px-4 sm:gap-4">
         <Link href="/" className="mr-1 flex items-center gap-2 font-semibold tracking-tight sm:mr-2">
           <ClapperboardIcon className="size-5 text-primary" aria-hidden="true" />
-          <span>{APP_NAME}</span>
+          {/* Below 400px the icon stands alone, so the nav and the account area fit on one line. */}
+          <span className="sr-only min-[400px]:not-sr-only">{APP_NAME}</span>
         </Link>
         {/* The pathname of a dynamic route is unknown while prerendering: the fallback marks no link as current. */}
         <Suspense fallback={<MainNavFallback />}>
           <MainNav />
         </Suspense>
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex items-center gap-1 sm:gap-2">
           <ThemeToggle />
+          <UserMenu />
         </div>
       </div>
     </header>

@@ -23,6 +23,7 @@
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
@@ -52,13 +53,16 @@
   /* Darker amber in light mode: bright amber text on a light background fails WCAG AA contrast. */
   --primary: oklch(0.555 0.163 48.998);
   --primary-foreground: oklch(0.99 0.003 85);
+  /* Primary buttons darken on hover in light mode: a lighter amber would drop their text below 4.5:1. */
+  --primary-hover: oklch(0.5 0.155 49);
   --secondary: oklch(0.96 0.006 85);
   --secondary-foreground: oklch(0.22 0.012 60);
   --muted: oklch(0.96 0.006 85);
   --muted-foreground: oklch(0.52 0.015 60);
   --accent: oklch(0.955 0.03 85);
   --accent-foreground: oklch(0.22 0.012 60);
-  --destructive: oklch(0.577 0.245 27.325);
+  /* Deeper than shadcn's red: destructive text sits on its own 10–20% tint (buttons, alerts) and must keep 4.5:1. */
+  --destructive: oklch(0.5 0.19 27.325);
   --border: oklch(0.91 0.008 85);
   --input: oklch(0.91 0.008 85);
   --ring: oklch(0.666 0.179 58.318);
@@ -77,6 +81,7 @@
   --popover-foreground: oklch(0.975 0.004 285);
   --primary: oklch(0.828 0.189 84.429);
   --primary-foreground: oklch(0.22 0.04 60);
+  --primary-hover: color-mix(in oklab, var(--primary) 80%, transparent);
   --secondary: oklch(0.26 0.014 285);
   --secondary-foreground: oklch(0.975 0.004 285);
   --muted: oklch(0.26 0.014 285);

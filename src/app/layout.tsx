@@ -3,6 +3,8 @@ import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
 import { ThemeProvider } from '@/components/providers/theme-provider'
 import { QueryProvider } from '@/components/providers/query-provider'
+import { SessionExpiryListener } from '@/components/auth/session-expiry-listener'
+import { AuthProvider } from '@/lib/auth/context'
 import { Toaster } from '@/components/ui/sonner'
 import { APP_DESCRIPTION, APP_NAME, APP_URL } from '@/lib/site'
 import './globals.css'
@@ -34,7 +36,12 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
     >
       <body className="flex min-h-full flex-col">
         <ThemeProvider>
-          <QueryProvider>{children}</QueryProvider>
+          <QueryProvider>
+            <AuthProvider>
+              {children}
+              <SessionExpiryListener />
+            </AuthProvider>
+          </QueryProvider>
           <Toaster />
         </ThemeProvider>
       </body>

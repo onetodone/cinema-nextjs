@@ -1,5 +1,5 @@
 import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query'
-import { publicApi } from '@/lib/api/client'
+import { publicApi } from '@/lib/api/public'
 import { unwrap } from '@/lib/api/problem'
 import type { MovieList } from '@/lib/api/types'
 import { MOVIES_PAGE_SIZE } from '@/lib/catalog'

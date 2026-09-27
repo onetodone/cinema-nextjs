@@ -94,6 +94,14 @@ export function formatShowtime(value: string): string {
   return parsed ? timeFormat.format(parsed.wallClock) : ''
 }
 
+const dateFormat = new Intl.DateTimeFormat(LOCALE, { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })
+
+/** "September 27, 2026" for an account timestamp (UTC), by its UTC day. */
+export function formatDate(value: string): string {
+  const instant = instantOf(value)
+  return Number.isNaN(instant) ? '' : dateFormat.format(new Date(instant))
+}
+
 /** "Sat, Sep 27" for a `YYYY-MM-DD` day. */
 export function formatDay(value: string): string {
   return isIsoDate(value) ? dayFormat.format(dateFromIso(value)) : value

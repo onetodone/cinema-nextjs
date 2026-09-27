@@ -14,3 +14,8 @@ export type SeatType = Schemas['SeatType']
 export type SeatStatus = Schemas['SeatStatus']
 export type Seat = Schemas['Seat']
 export type SeatMap = Schemas['SeatMap']
+export type User = Schemas['User']
+/** The answer of a login or refresh: the access token, its lifetime in seconds, and the account. */
+export type TokenResponse = Schemas['AccessToken']
+/** A signed-in browser or device of the caller (`GET /v1/auth/sessions`). */
+export type AuthSession = Schemas['Session']

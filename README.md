@@ -8,9 +8,9 @@ comes from the separate `cinema-api` Go service, which must be running for this 
 Admin screens are out of scope (admins use the API directly).
 
 > **Status:** under construction. Done: the app shell, security headers, the `/v1` proxy to the API (Sprint 0),
-> and the public catalog with the live seat map (Sprint 1). Sign-in, booking and payment, and the account
-> screens follow in later sprints; until sign-in lands, "Continue" on the seat map leads to a page that does
-> not exist yet.
+> the public catalog with the live seat map (Sprint 1), and sign-in with sessions shared by every tab (Sprint 2).
+> Booking and payment, "My bookings", and the sessions list follow in later sprints; until booking lands,
+> "Continue" on the seat map goes through sign-in and back to the showtime.
 
 ## What it shows
 
@@ -21,6 +21,9 @@ Admin screens are out of scope (admins use the API directly).
 | `/movies/<id>`    | A movie with its showtimes of the next two weeks, grouped by day.                                                                                                         |
 | `/schedule`       | One day's showtimes by movie: a two-week date strip (`?date=YYYY-MM-DD`) and a movie filter (`?movie=<id>`).                                                              |
 | `/showtimes/<id>` | The live seat map: pick up to 10 seats with the mouse or the keyboard (arrow keys, Home/End, PageUp/PageDown, Space). Canceled and started showtimes are shown as closed. |
+| `/login`          | Sign in; `?next=` (a path of this site) is where you go afterwards.                                                                                                       |
+| `/register`       | Create an account; you are signed in right after.                                                                                                                         |
+| `/account`        | Your profile, "Sign out" (this browser, every tab), and "Sign out everywhere" (every device). Signed-in users only.                                                       |
 
 Times are the cinema's wall-clock times exactly as the API sends them (never converted to the browser's time
 zone), and prices are formatted from the API's integer cents.
@@ -113,12 +116,48 @@ Server Components ───────── fetch ${API_ORIGIN}/v1/*  (server-
   tab is visible (TanStack Query), and again on focus. The API's weak `ETag` and `Cache-Control: no-cache` make
   the browser revalidate by itself, so an unchanged map is a bodyless `304` through the proxy. Seats that someone
   else takes leave the local selection with a notice. A stale map never sells a seat twice: the API decides.
+- **Sign-in and sessions** (below).
 - **Security headers.** A static CSP (no nonces, which would force every page to render per request and rule
   out prerendered shells), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, a strict referrer
   policy, and a restrictive `Permissions-Policy`. `img-src` allows any `https:` host because posters come from
   URLs that admins enter.
 - **API types.** `src/lib/api/schema.d.ts` is generated from the API's `api/openapi.yaml` and committed; do not
   edit it by hand (see [Regenerating the API types](#regenerating-the-api-types)).
+
+### Sign-in and sessions
+
+The access token (a JWT, 15 minutes by default) lives **in the memory of each tab** — never in web storage, a
+cookie, or the server-rendered HTML. The refresh token is the API's `cinema_refresh` cookie: `HttpOnly`,
+`SameSite=Strict`, on `Path=/v1/auth`, rotated on every refresh, and backed by a session on the server. Next to it,
+the front keeps a readable, non-secret hint cookie, `cinema_signed_in`, whose only job is to spare guests a refresh
+call on every page load.
+
+```
+tab starts
+  ├─ no cinema_signed_in hint ─────────▶ guest: no auth call at all
+  └─ hint ─▶ "hello" to the other tabs ─▶ a signed-in tab answers with its token (no request)
+                                      └─ no answer within 150 ms ─▶ refresh
+refresh  (start-up · a call answered 401 · a timer shortly before expiry · the tab regains focus)
+  one at a time per tab ─▶ Web Lock "cinema-auth", shared by all tabs ─▶ a peer refreshed meanwhile? take its token
+  └─▶ POST /v1/auth/refresh {}
+        200 ─▶ keep the token, schedule the next refresh, hand the token to the other tabs
+        401 ─▶ the session is over: every tab signs out
+        no answer, 5xx, 429 (after retries) ─▶ keep the session; the next call or focus tries again
+```
+
+- **Tabs share one session.** A `BroadcastChannel` carries tokens, sign-ins, and sign-outs between tabs, and every
+  request that changes the refresh cookie (sign-in, refresh, sign-out) runs under one Web Lock, so they never race:
+  N tabs whose tokens expire together make one refresh, and a sign-out never races a refresh. The API's 30-second
+  grace window for a just-rotated refresh token is the safety net for browsers without Web Locks.
+- **Calls.** Personal data goes through `api` (`src/lib/api/client.ts`), which adds the token, and on a `401`
+  refreshes once and replays the same request (same body, same `Idempotency-Key`). Public data goes through
+  `publicApi`, which never waits for a session.
+- **Pages.** Signed-in-only pages render a skeleton while the tab checks its session, then send guests to
+  `/login?next=…`; `/login` and `/register` send signed-in visitors on to `next`. If the API cannot be reached when a
+  tab starts, it does not sign you out: private pages offer "Try again", and the tab retries on focus and when the
+  browser comes back online.
+- **Personal data is dropped** from the query cache whenever the signed-in user changes (sign-out, or another
+  account signing in in another tab).
 
 ## Production topology
 
@@ -191,12 +230,35 @@ Commit the regenerated `src/lib/api/schema.d.ts`. It is excluded from Prettier a
 
 The end-to-end tests run against the **real local API** and its seeded catalog (and, from the booking sprint on,
 its worker), so start `cinema-api` first. They read showtimes from the API instead of assuming seed ids, and use
-tomorrow's first showtime so that it is still bookable. One spec registers a throwaway account
-(`e2e-<time>-<random>@example.com`) in the local database, holds one seat with it, and releases the hold at the
-end. With the API's default rate limits, that sign-up and sign-in count against the per-address budget (30 per
-minute) that all requests through the proxy share. Set `E2E_BASE_URL` to test an already running deployment instead of starting the dev server.
-Install the browser once with `pnpm exec playwright install chromium`. On WSL or a fresh Linux, Chromium may
-also need system libraries: `sudo pnpm exec playwright install-deps chromium`.
+tomorrow's first showtime so that it is still bookable. Set `E2E_BASE_URL` to test an already running deployment
+instead of starting the dev server. Install the browser once with `pnpm exec playwright install chromium`. On WSL
+or a fresh Linux, Chromium may also need system libraries: `sudo pnpm exec playwright install-deps chromium`.
+
+The specs register throwaway accounts (`e2e-<time>-<random>@example.com`) in the local database; the API has no
+way to delete them. A full run signs up and signs in about 25 times, and with the API's default rate limits all of
+that counts against one per-address budget (30 per minute, shared by every request through the proxy), so a
+second run within a minute can hit `429`. Two auth specs depend on the API's settings:
+
+- "tabs whose tokens expire together make one refresh" needs tokens of at most 60 seconds (`JWT_TTL=30s`) and is
+  skipped otherwise;
+- "replaying an old refresh cookie" waits out the refresh grace window: `E2E_REFRESH_GRACE_SECONDS` (default `30`,
+  the API's default `REFRESH_GRACE`).
+
+For a complete, repeatable run, start a second API with test settings next to your usual one, build the front
+against it, and point the specs at that build:
+
+```bash
+# in cinema-api (same database and Redis; its own ports):
+set -a; . ./.env; set +a
+HTTP_ADDR=:8081 METRICS_ADDR=:9092 JWT_TTL=30s REFRESH_GRACE=2s \
+  AUTH_IP_RATE_LIMIT_PER_MIN=0 LOGIN_EMAIL_RATE_LIMIT_PER_MIN=0 AUTH_REFRESH_RATE_LIMIT_PER_MIN=0 \
+  BOOKING_RATE_LIMIT_PER_MIN=0 go run ./cmd/api
+
+# in cinema-front:
+API_ORIGIN=http://localhost:8081 NEXT_PUBLIC_APP_URL=http://localhost:3002 pnpm build
+pnpm exec next start -p 3002
+E2E_BASE_URL=http://localhost:3002 E2E_REFRESH_GRACE_SECONDS=2 pnpm exec playwright test
+```
 
 CI (`.github/workflows/ci.yml`) runs `lint:ci`, `typecheck`, `test`, and `build`. The end-to-end tests need the
 API and run locally.
@@ -212,6 +274,11 @@ API and run locally.
 - Whether a showtime has started is judged by the viewer's clock, after the page loads; the API has the final say
   when seats are held.
 - Movies without a poster (or with a broken poster URL) get a designed fallback built from the title.
+- The access token lives in one tab's memory: a reload with no other tab open costs one refresh call, and a browser
+  whose `cinema_signed_in` hint cookie was deleted (but not its refresh cookie) looks signed out until the next
+  sign-in.
+- A signed-out access token stops working at once only while the API's Redis is up; otherwise it works until it
+  expires (15 minutes by default), though it can no longer be refreshed.
 
 ## Scripts
 
@@ -234,13 +301,19 @@ API and run locally.
 src/app/                  Routes (App Router); (site)/ = public, server-rendered pages; sitemap.ts, robots.ts
 src/components/ui/        shadcn primitives
 src/components/providers/ theme and TanStack Query providers
-src/components/layout/    site header and navigation, footer, theme toggle, page layout, section error boundary
+src/components/layout/    site header and navigation, user menu, footer, theme toggle, page layout, section error boundary
+src/components/auth/      guards, sign-out notices, the auth card and form message
 src/components/catalog/   poster, movie card and grid, showtime chip, schedule list, date strip, movie filter
 src/components/seat-map/  seat picker, seat map, seats, legend, selection summary
-src/hooks/                shared clock (has a showtime started?), seat selection
-src/lib/api/              generated types (schema.d.ts), server reads (server.ts), browser client, problem parsing
+src/hooks/                shared clock (has a showtime started?), seat selection, form focus
+src/lib/api/              generated types (schema.d.ts), server reads (server.ts), browser clients (public.ts,
+                          client.ts), problem parsing, error messages
+src/lib/auth/             the session (session.ts), token store, hint cookie, broadcast channel, Web Lock,
+                          ?next= checks, AuthProvider / useAuth
 src/lib/queries/          TanStack Query keys and options
-src/lib/                  time and money formatting, catalog and seat-map logic, logger, site constants
+src/lib/                  time and money formatting, catalog and seat-map logic, forms, logger, site constants
+src/schemas/              zod schemas of the forms
+src/test/                 test helpers (query client, fake tabs: BroadcastChannel, Web Locks, API)
 tests/e2e/                Playwright specs
 next.config.ts            /v1 rewrite, security headers, Cache Components, standalone output
 instrumentation.ts        server error logging, console masking in production

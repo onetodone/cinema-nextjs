@@ -1,4 +1,4 @@
-import { ApiError, type FieldError } from '@/lib/api/errors'
+import { ApiError, isApiError, type FieldError } from '@/lib/api/errors'
 
 const NETWORK_MESSAGE = 'Network error. Check your connection and try again.'
 
@@ -71,7 +71,8 @@ export async function unwrap<T>(pending: Promise<ApiResult<T>>): Promise<T> {
   try {
     result = await pending
   } catch (cause) {
-    throw networkError(cause)
+    // The auth-aware client throws an ApiError when there is no session to send; anything else got no answer.
+    throw isApiError(cause) ? cause : networkError(cause)
   }
   if (result.error !== undefined || !result.response.ok) throw toApiError(result.response, result.error)
   return result.data as T
