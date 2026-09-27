@@ -1,0 +1,97 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --breakpoint-xs: 20rem;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/*
+ * Cinema palette: designed dark-first (an auditorium with the lights down) with an amber "marquee" accent.
+ * Neutrals carry a slight blue-violet tint in dark mode and a slight warm tint in light mode.
+ */
+:root {
+  --background: oklch(0.99 0.003 85);
+  --foreground: oklch(0.18 0.012 60);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.012 60);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.012 60);
+  /* Darker amber in light mode: bright amber text on a light background fails WCAG AA contrast. */
+  --primary: oklch(0.555 0.163 48.998);
+  --primary-foreground: oklch(0.99 0.003 85);
+  --secondary: oklch(0.96 0.006 85);
+  --secondary-foreground: oklch(0.22 0.012 60);
+  --muted: oklch(0.96 0.006 85);
+  --muted-foreground: oklch(0.52 0.015 60);
+  --accent: oklch(0.955 0.03 85);
+  --accent-foreground: oklch(0.22 0.012 60);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.91 0.008 85);
+  --input: oklch(0.91 0.008 85);
+  --ring: oklch(0.666 0.179 58.318);
+  --radius: 0.625rem;
+}
+
+.dark {
+  --background: oklch(0.155 0.01 285);
+  --foreground: oklch(0.975 0.004 285);
+  --card: oklch(0.2 0.012 285);
+  --card-foreground: oklch(0.975 0.004 285);
+  --popover: oklch(0.2 0.012 285);
+  --popover-foreground: oklch(0.975 0.004 285);
+  --primary: oklch(0.828 0.189 84.429);
+  --primary-foreground: oklch(0.22 0.04 60);
+  --secondary: oklch(0.26 0.014 285);
+  --secondary-foreground: oklch(0.975 0.004 285);
+  --muted: oklch(0.26 0.014 285);
+  --muted-foreground: oklch(0.72 0.016 285);
+  --accent: oklch(0.28 0.02 285);
+  --accent-foreground: oklch(0.975 0.004 285);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.769 0.188 70.08);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}

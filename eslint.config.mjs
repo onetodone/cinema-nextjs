@@ -1,0 +1,22 @@
+import { defineConfig, globalIgnores } from 'eslint/config'
+import nextVitals from 'eslint-config-next/core-web-vitals'
+import nextTs from 'eslint-config-next/typescript'
+
+const eslintConfig = defineConfig([
+  ...nextVitals,
+  ...nextTs,
+  globalIgnores([
+    '.next/**',
+    'out/**',
+    'build/**',
+    'next-env.d.ts',
+    // generated from the API contract by `pnpm api:types`
+    'src/lib/api/schema.d.ts',
+    'playwright-report/**',
+    'test-results/**',
+    'blob-report/**',
+    'coverage/**',
+  ]),
+])
+
+export default eslintConfig

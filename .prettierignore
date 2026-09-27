@@ -1,0 +1,16 @@
+.next/
+.pnpm-store/
+node_modules/
+*.tsbuildinfo
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# generated from the API contract by `pnpm api:types`
+src/lib/api/schema.d.ts
+
+# test artifacts
+playwright-report/
+test-results/
+blob-report/
+coverage/
