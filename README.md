@@ -7,9 +7,23 @@ This is a **frontend only** — a Next.js app with no database and no backend of
 comes from the separate `cinema-api` Go service, which must be running for this app to do anything useful.
 Admin screens are out of scope (admins use the API directly).
 
-> **Status:** under construction. Sprint 0 (scaffold and guardrails) is done: the app shell, theme, security
-> headers, the `/v1` proxy to the API, generated API types, and the test harnesses. The catalog, auth,
-> booking, and account screens follow in later sprints.
+> **Status:** under construction. Done: the app shell, security headers, the `/v1` proxy to the API (Sprint 0),
+> and the public catalog with the live seat map (Sprint 1). Sign-in, booking and payment, and the account
+> screens follow in later sprints; until sign-in lands, "Continue" on the seat map leads to a page that does
+> not exist yet.
+
+## What it shows
+
+| Page              | What you see                                                                                                                                                              |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/`               | Now showing (the first movies) and today's showtimes by movie.                                                                                                            |
+| `/movies`         | Every movie, with "Load more" for the next pages.                                                                                                                         |
+| `/movies/<id>`    | A movie with its showtimes of the next two weeks, grouped by day.                                                                                                         |
+| `/schedule`       | One day's showtimes by movie: a two-week date strip (`?date=YYYY-MM-DD`) and a movie filter (`?movie=<id>`).                                                              |
+| `/showtimes/<id>` | The live seat map: pick up to 10 seats with the mouse or the keyboard (arrow keys, Home/End, PageUp/PageDown, Space). Canceled and started showtimes are shown as closed. |
+
+Times are the cinema's wall-clock times exactly as the API sends them (never converted to the browser's time
+zone), and prices are formatted from the API's integer cents.
 
 ## Tech stack
 
@@ -89,6 +103,16 @@ Server Components ───────── fetch ${API_ORIGIN}/v1/*  (server-
 - **Rendering split.** The public catalog (movies, schedule, showtime pages) is server-rendered for SEO and a
   fast first paint. Everything personal is rendered on the client, because the access token lives only in
   browser memory.
+- **Catalog data (Cache Components).** Every page is a prerendered static shell (header, headings, skeletons)
+  into which its catalog data streams at request time. `src/lib/api/server.ts` is the only place Server
+  Components read the API: each read awaits `connection()` first, so **`next build` never calls the API** (CI has
+  none), and is cached in the server's memory with `'use cache'` — movies for about a minute (`catalog`
+  profile), the schedule and showtime headers for 10 seconds (`schedule` profile, like the API's own cache). The
+  seat map is never cached by Next. A failed read replaces only its own section with a "Try again" card.
+- **Live seat map.** The server renders the current map; the browser then polls it every 5 seconds while the
+  tab is visible (TanStack Query), and again on focus. The API's weak `ETag` and `Cache-Control: no-cache` make
+  the browser revalidate by itself, so an unchanged map is a bodyless `304` through the proxy. Seats that someone
+  else takes leave the local selection with a notice. A stale map never sells a seat twice: the API decides.
 - **Security headers.** A static CSP (no nonces, which would force every page to render per request and rule
   out prerendered shells), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, a strict referrer
   policy, and a restrictive `Permissions-Policy`. `img-src` allows any `https:` host because posters come from
@@ -165,13 +189,29 @@ Commit the regenerated `src/lib/api/schema.d.ts`. It is excluded from Prettier a
 | `pnpm test`     | Vitest unit and component tests (jsdom), `src/**/*.test.{ts,tsx}`.                              |
 | `pnpm test:e2e` | Playwright end-to-end tests in Chromium, `tests/e2e/`. Starts `pnpm dev` unless one is running. |
 
-The end-to-end tests run against the **real local API** (and, from the booking sprint on, its worker), so start
-`cinema-api` first. Set `E2E_BASE_URL` to test an already running deployment instead of starting the dev server.
+The end-to-end tests run against the **real local API** and its seeded catalog (and, from the booking sprint on,
+its worker), so start `cinema-api` first. They read showtimes from the API instead of assuming seed ids, and use
+tomorrow's first showtime so that it is still bookable. One spec registers a throwaway account
+(`e2e-<time>-<random>@example.com`) in the local database, holds one seat with it, and releases the hold at the
+end. With the API's default rate limits, that sign-up and sign-in count against the per-address budget (30 per
+minute) that all requests through the proxy share. Set `E2E_BASE_URL` to test an already running deployment instead of starting the dev server.
 Install the browser once with `pnpm exec playwright install chromium`. On WSL or a fresh Linux, Chromium may
 also need system libraries: `sudo pnpm exec playwright install-deps chromium`.
 
 CI (`.github/workflows/ci.yml`) runs `lint:ci`, `typecheck`, `test`, and `build`. The end-to-end tests need the
 API and run locally.
+
+## Known limitations
+
+- The seat map has rows and numbers only: the API describes no aisles, gaps, or geometry, so rows are centred.
+- There is no push channel: seat changes appear within about 5 seconds (polling), and the schedule's seat counts
+  can be up to 10 seconds old.
+- Unknown movie and showtime ids show a "not found" page marked `noindex`, but with HTTP status `200`: with Cache
+  Components the page shell streams before the data is read, and a real `404` would need an API call in
+  `proxy.ts` on every request.
+- Whether a showtime has started is judged by the viewer's clock, after the page loads; the API has the final say
+  when seats are held.
+- Movies without a poster (or with a broken poster URL) get a designed fallback built from the title.
 
 ## Scripts
 
@@ -191,12 +231,16 @@ API and run locally.
 ## Project structure
 
 ```
-src/app/                  Routes (App Router); (site)/ = public, server-rendered pages
+src/app/                  Routes (App Router); (site)/ = public, server-rendered pages; sitemap.ts, robots.ts
 src/components/ui/        shadcn primitives
 src/components/providers/ theme and TanStack Query providers
-src/components/layout/    site header, footer, theme toggle
-src/lib/api/              generated API types (schema.d.ts)
-src/lib/                  logger (secret masking), utils, site constants
+src/components/layout/    site header and navigation, footer, theme toggle, page layout, section error boundary
+src/components/catalog/   poster, movie card and grid, showtime chip, schedule list, date strip, movie filter
+src/components/seat-map/  seat picker, seat map, seats, legend, selection summary
+src/hooks/                shared clock (has a showtime started?), seat selection
+src/lib/api/              generated types (schema.d.ts), server reads (server.ts), browser client, problem parsing
+src/lib/queries/          TanStack Query keys and options
+src/lib/                  time and money formatting, catalog and seat-map logic, logger, site constants
 tests/e2e/                Playwright specs
 next.config.ts            /v1 rewrite, security headers, Cache Components, standalone output
 instrumentation.ts        server error logging, console masking in production

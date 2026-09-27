@@ -4,13 +4,11 @@ import { GeistMono } from 'geist/font/mono'
 import { ThemeProvider } from '@/components/providers/theme-provider'
 import { QueryProvider } from '@/components/providers/query-provider'
 import { Toaster } from '@/components/ui/sonner'
-import { APP_DESCRIPTION, APP_NAME } from '@/lib/site'
+import { APP_DESCRIPTION, APP_NAME, APP_URL } from '@/lib/site'
 import './globals.css'
 
-const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3001'
-
 export const metadata: Metadata = {
-  metadataBase: new URL(appUrl),
+  metadataBase: new URL(APP_URL),
   applicationName: APP_NAME,
   title: {
     default: APP_NAME,

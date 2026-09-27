@@ -1,35 +1,114 @@
-import { ClapperboardIcon, ArmchairIcon, TicketIcon } from 'lucide-react'
+import { Suspense } from 'react'
+import Link from 'next/link'
+import { ArrowRightIcon, CalendarDaysIcon, ClapperboardIcon } from 'lucide-react'
+import { getMoviesPage, getSchedule } from '@/lib/api/server'
+import { groupShowtimesByMovie } from '@/lib/catalog'
+import { formatLongDay } from '@/lib/time'
 import { APP_DESCRIPTION } from '@/lib/site'
+import { MovieCard, MovieGrid, MovieGridSkeleton } from '@/components/catalog/movie-card'
+import { ScheduleList, ScheduleListSkeleton } from '@/components/catalog/schedule-list'
+import { EmptyState, PageContainer, SectionHeader } from '@/components/layout/page'
+import { SectionErrorBoundary } from '@/components/layout/section-error'
+import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 
-const steps = [
-  { icon: ClapperboardIcon, title: 'Pick a showtime', text: 'Browse what is showing and the day schedule.' },
-  { icon: ArmchairIcon, title: 'Choose your seats', text: 'A live seat map holds them for 15 minutes.' },
-  { icon: TicketIcon, title: 'Pay and go', text: 'Your ticket, with a QR code, is ready at once.' },
-]
+const NOW_SHOWING_COUNT = 8
 
-// Placeholder home until the catalog lands (Sprint 1): proves the theme, fonts, and layout render.
 export default function HomePage() {
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-10 px-4 py-12 sm:py-20">
-      <section className="flex flex-col gap-4">
-        <p className="text-sm font-medium tracking-widest text-primary uppercase">Now showing soon</p>
+    <PageContainer className="gap-14">
+      <section className="flex flex-col gap-5 pt-4 sm:pt-8">
+        <p className="text-sm font-medium tracking-widest text-primary uppercase">Now showing</p>
         <h1 className="max-w-2xl text-4xl font-semibold tracking-tight text-balance sm:text-5xl">
           Your seat is waiting.
         </h1>
         <p className="max-w-xl text-lg text-pretty text-muted-foreground">{APP_DESCRIPTION}</p>
+        <div className="flex flex-wrap gap-2">
+          <Button size="lg" nativeButton={false} render={<Link href="/schedule" />}>
+            <CalendarDaysIcon data-icon="inline-start" aria-hidden="true" />
+            Today&apos;s schedule
+          </Button>
+          <Button size="lg" variant="outline" nativeButton={false} render={<Link href="/movies" />}>
+            <ClapperboardIcon data-icon="inline-start" aria-hidden="true" />
+            Browse movies
+          </Button>
+        </div>
       </section>
-      <ol className="grid gap-4 sm:grid-cols-3">
-        {steps.map(({ icon: Icon, title, text }, index) => (
-          <li key={title} className="flex flex-col gap-2 rounded-xl border bg-card p-5 text-card-foreground">
-            <Icon className="size-6 text-primary" aria-hidden="true" />
-            <h2 className="font-medium">
-              <span className="sr-only">Step {index + 1}: </span>
-              {title}
-            </h2>
-            <p className="text-sm text-muted-foreground">{text}</p>
-          </li>
-        ))}
-      </ol>
-    </main>
+
+      <section aria-labelledby="now-showing" className="flex flex-col gap-5">
+        <SectionHeader id="now-showing" title="Now showing" action={<MoreLink href="/movies">All movies</MoreLink>} />
+        <SectionErrorBoundary what="the movies">
+          <Suspense fallback={<MovieGridSkeleton count={NOW_SHOWING_COUNT} />}>
+            <NowShowing />
+          </Suspense>
+        </SectionErrorBoundary>
+      </section>
+
+      <section aria-labelledby="today" className="flex flex-col gap-5">
+        <SectionHeader id="today" title="Today" action={<MoreLink href="/schedule">Full schedule</MoreLink>} />
+        <SectionErrorBoundary what="today's schedule">
+          <Suspense fallback={<TodayScheduleSkeleton />}>
+            <TodaySchedule />
+          </Suspense>
+        </SectionErrorBoundary>
+      </section>
+    </PageContainer>
+  )
+}
+
+function MoreLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <Link
+      href={href}
+      className="inline-flex items-center gap-1 rounded-sm text-sm font-medium text-primary outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
+    >
+      {children}
+      <ArrowRightIcon className="size-4" aria-hidden="true" />
+    </Link>
+  )
+}
+
+async function NowShowing() {
+  // The same first page as /movies, so both share one cache entry.
+  const { items } = await getMoviesPage()
+  if (items.length === 0) return <EmptyState title="No movies yet">Check back soon.</EmptyState>
+
+  return (
+    <MovieGrid>
+      {items.slice(0, NOW_SHOWING_COUNT).map((movie, index) => (
+        <li key={movie.id}>
+          <MovieCard movie={movie} priority={index < 4} eager={index < 8} />
+        </li>
+      ))}
+    </MovieGrid>
+  )
+}
+
+async function TodaySchedule() {
+  const schedule = await getSchedule()
+  const groups = groupShowtimesByMovie(schedule.items)
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">{formatLongDay(schedule.date)}</p>
+      {groups.length === 0 ? (
+        <EmptyState title="Nothing is showing today">
+          <Link href="/schedule" className="text-primary hover:underline">
+            See the coming days
+          </Link>
+        </EmptyState>
+      ) : (
+        <ScheduleList groups={groups} />
+      )}
+    </div>
+  )
+}
+
+function TodayScheduleSkeleton() {
+  return (
+    <div className="flex flex-col gap-4" aria-hidden="true">
+      <Skeleton className="h-5 w-48" />
+      <ScheduleListSkeleton />
+    </div>
   )
 }

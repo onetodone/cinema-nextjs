@@ -52,6 +52,14 @@ const nextConfig: NextConfig = {
   ...standaloneConfig,
   poweredByHeader: false,
   cacheComponents: true,
+  // Lifetimes of the server's in-memory cache of public catalog reads (src/lib/api/server.ts). Those reads run at
+  // request time only, never during `next build`.
+  cacheLife: {
+    // Movies change rarely.
+    catalog: { stale: 60, revalidate: 60, expire: 600 },
+    // The schedule and showtime headers carry seat counts; the API itself caches the schedule for 10 s.
+    schedule: { stale: 30, revalidate: 10, expire: 60 },
+  },
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }]
   },
