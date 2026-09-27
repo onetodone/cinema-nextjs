@@ -115,3 +115,38 @@ export function collectUnexpectedErrors(page: Page): string[] {
   page.on('pageerror', (error) => errors.push(error.message))
   return errors
 }
+
+/** Holds seats next to the browser, as the account's other device would; returns the booking. */
+export async function holdThroughApi(
+  request: APIRequestContext,
+  token: string,
+  showtimeId: number,
+  seats: readonly Pick<Seat, 'id'>[],
+): Promise<Booking> {
+  const response = await request.post('/v1/bookings', {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { showtime_id: showtimeId, seat_ids: seats.map((seat) => seat.id) },
+  })
+  expect(response.status(), await response.text()).toBe(201)
+  return (await response.json()) as Booking
+}
+
+/** Pays for a booking next to the browser with a test card token (`tok_success` by default). */
+export async function payThroughApi(
+  request: APIRequestContext,
+  token: string,
+  bookingId: string,
+  paymentToken = 'tok_success',
+): Promise<void> {
+  const response = await request.post(`/v1/bookings/${bookingId}/payments`, {
+    headers: { Authorization: `Bearer ${token}`, 'Idempotency-Key': crypto.randomUUID() },
+    data: { payment_method: 'local', payment_token: paymentToken },
+  })
+  expect(response.status(), await response.text()).toBe(200)
+}
+
+/** Releases a hold next to the browser. */
+export async function cancelThroughApi(request: APIRequestContext, token: string, bookingId: string): Promise<void> {
+  const response = await request.delete(`/v1/bookings/${bookingId}`, { headers: { Authorization: `Bearer ${token}` } })
+  expect(response.status(), await response.text()).toBe(204)
+}

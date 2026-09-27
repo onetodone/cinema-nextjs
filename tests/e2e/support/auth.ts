@@ -45,18 +45,24 @@ export async function signInThroughUi(page: Page, account: Account, path = '/log
   await expect(accountButton(page, account)).toBeVisible()
 }
 
-/** Records the context's calls to /v1/auth/* as "METHOD /path STATUS", in the order the answers arrive. */
+/**
+ * Records the context's token calls to /v1/auth/* (register, login, refresh, logout) as "METHOD /path STATUS", in the
+ * order the answers arrive. The sessions list (`/v1/auth/sessions`) is account data the account page reads, not a
+ * token call, so it is left out.
+ */
 export function trackAuthCalls(context: BrowserContext): string[] {
   const calls: string[] = []
+  const isTokenCall = (pathname: string) =>
+    pathname.startsWith('/v1/auth/') && !pathname.startsWith('/v1/auth/sessions')
   context.on('requestfinished', async (request) => {
     const url = new URL(request.url())
-    if (!url.pathname.startsWith('/v1/auth/')) return
+    if (!isTokenCall(url.pathname)) return
     const response = await request.response()
     calls.push(`${request.method()} ${url.pathname} ${response?.status() ?? '-'}`)
   })
   context.on('requestfailed', (request) => {
     const url = new URL(request.url())
-    if (url.pathname.startsWith('/v1/auth/')) calls.push(`${request.method()} ${url.pathname} failed`)
+    if (isTokenCall(url.pathname)) calls.push(`${request.method()} ${url.pathname} failed`)
   })
   return calls
 }

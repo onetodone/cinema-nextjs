@@ -9,6 +9,7 @@ import {
   formatLongDay,
   formatShowtime,
   formatShowtimeDateTime,
+  formatTimeAgo,
   instantOf,
   isIsoDate,
   localDateOf,
@@ -117,5 +118,24 @@ describe('durations and countdowns', () => {
     expect(formatCountdown(200)).toBe('0:01')
     expect(formatCountdown(0)).toBe('0:00')
     expect(formatCountdown(-5)).toBe('0:00')
+  })
+})
+
+describe('formatTimeAgo', () => {
+  const now = Date.parse('2026-09-27T12:00:00Z')
+
+  it('says how long ago an account timestamp was', () => {
+    expect(formatTimeAgo('2026-09-27T11:59:30Z', now)).toBe('just now')
+    expect(formatTimeAgo('2026-09-27T11:59:00Z', now)).toBe('1 minute ago')
+    expect(formatTimeAgo('2026-09-27T11:15:00Z', now)).toBe('45 minutes ago')
+    expect(formatTimeAgo('2026-09-27T09:00:00Z', now)).toBe('3 hours ago')
+    expect(formatTimeAgo('2026-09-26T08:00:00Z', now)).toBe('yesterday')
+    expect(formatTimeAgo('2026-09-15T12:00:00Z', now)).toBe('12 days ago')
+    expect(formatTimeAgo('2026-08-01T12:00:00Z', now)).toBe('on August 1, 2026')
+  })
+
+  it('treats a moment ahead of the clock as now, and ignores what it cannot read', () => {
+    expect(formatTimeAgo('2026-09-27T12:02:00Z', now)).toBe('just now')
+    expect(formatTimeAgo('bad', now)).toBe('')
   })
 })

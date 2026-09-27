@@ -64,6 +64,7 @@ describe('UserMenu', () => {
 
     await user.click(screen.getByRole('button', { name: `Account: ${ANN.email}` }))
     expect(await screen.findByText(ANN.email)).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'My bookings' })).toHaveAttribute('href', '/bookings')
     expect(screen.getByRole('menuitem', { name: 'Account' })).toHaveAttribute('href', '/account')
 
     await user.click(screen.getByRole('menuitem', { name: 'Sign out' }))

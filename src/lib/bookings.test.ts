@@ -1,10 +1,61 @@
 import { describe, expect, it } from 'vitest'
 import { ApiError } from '@/lib/api/errors'
-import { activeBookingFor, holdOutcome, isBookingId, nextToExpire } from '@/lib/bookings'
+import {
+  activeBookingFor,
+  awaitsSettlement,
+  groupBookingHistory,
+  holdOutcome,
+  isBookingId,
+  nextToExpire,
+} from '@/lib/bookings'
 import { makeBooking } from '@/test/booking'
 
 const apiError = (status: number, code: string, extra: Partial<ConstructorParameters<typeof ApiError>[1]> = {}) =>
   new ApiError(code, { status, code, ...extra })
+
+const showtimeAt = (id: number, startsAt: string) => ({ ...makeBooking().showtime, id, starts_at: startsAt })
+
+describe('booking history', () => {
+  const now = Date.parse('2026-09-27T12:00:00Z')
+  const soon = makeBooking({ id: 'soon', status: 'paid', showtime: showtimeAt(1, '2026-09-27T19:30:00+02:00') })
+  const later = makeBooking({ id: 'later', status: 'paid', showtime: showtimeAt(2, '2026-10-02T18:00:00+02:00') })
+  const started = makeBooking({ id: 'started', status: 'paid', showtime: showtimeAt(3, '2026-09-27T13:30:00+02:00') })
+  const expired = makeBooking({
+    id: 'expired',
+    status: 'expired',
+    showtime: showtimeAt(4, '2026-10-01T18:00:00+02:00'),
+  })
+  const canceled = makeBooking({ id: 'canceled', status: 'canceled' })
+
+  it('puts paid tickets still to come first, the soonest first; the rest keeps the list order', () => {
+    const { upcoming, past } = groupBookingHistory([later, started, expired, soon, canceled], now)
+
+    expect(upcoming.map((booking) => booking.id)).toEqual(['soon', 'later'])
+    // 13:30 at +02:00 is 11:30 UTC: started. An expired hold is past even when its showtime is not.
+    expect(past.map((booking) => booking.id)).toEqual(['started', 'expired', 'canceled'])
+  })
+
+  it('counts a booking seen on two pages once', () => {
+    const { upcoming, past } = groupBookingHistory([soon, canceled, soon, canceled], now)
+    expect(upcoming).toHaveLength(1)
+    expect(past).toHaveLength(1)
+  })
+})
+
+describe('awaitsSettlement', () => {
+  const now = Date.parse('2026-09-27T12:00:00Z')
+
+  it('waits for payments in flight and for holds whose time is up', () => {
+    const live = makeBooking({ expires_at: '2026-09-27T12:10:00Z' })
+    const overdue = makeBooking({ expires_at: '2026-09-27T12:00:00Z' })
+    const processing = makeBooking({ status: 'processing', expires_at: '2026-09-27T12:10:00Z' })
+
+    expect(awaitsSettlement([live], now)).toBe(false)
+    expect(awaitsSettlement([live, overdue], now)).toBe(true)
+    expect(awaitsSettlement([processing], now)).toBe(true)
+    expect(awaitsSettlement([], now)).toBe(false)
+  })
+})
 
 describe('active bookings', () => {
   const paid = makeBooking({ id: 'paid', status: 'paid' })

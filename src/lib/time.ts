@@ -102,6 +102,26 @@ export function formatDate(value: string): string {
   return Number.isNaN(instant) ? '' : dateFormat.format(new Date(instant))
 }
 
+const relativeFormat = new Intl.RelativeTimeFormat(LOCALE, { numeric: 'auto' })
+
+/**
+ * How long ago an account timestamp (UTC) was, from `now` (epoch ms): "just now", "5 minutes ago", "3 hours ago",
+ * "yesterday", "12 days ago"; "on September 1, 2026" beyond a month. A moment ahead of `now` (clocks disagree) is
+ * "just now".
+ */
+export function formatTimeAgo(value: string, now: number): string {
+  const instant = instantOf(value)
+  if (Number.isNaN(instant)) return ''
+  const minutes = Math.floor(Math.max(0, now - instant) / MINUTE_MS)
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return relativeFormat.format(-minutes, 'minute')
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return relativeFormat.format(-hours, 'hour')
+  const days = Math.floor(hours / 24)
+  if (days < 30) return relativeFormat.format(-days, 'day')
+  return `on ${formatDate(value)}`
+}
+
 /** "Sat, Sep 27" for a `YYYY-MM-DD` day. */
 export function formatDay(value: string): string {
   return isIsoDate(value) ? dayFormat.format(dateFromIso(value)) : value

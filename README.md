@@ -7,10 +7,10 @@ This is a **frontend only** — a Next.js app with no database and no backend of
 comes from the separate `cinema-api` Go service, which must be running for this app to do anything useful.
 Admin screens are out of scope (admins use the API directly).
 
-> **Status:** under construction. Done: the app shell, security headers, the `/v1` proxy to the API (Sprint 0),
-> the public catalog with the live seat map (Sprint 1), sign-in with sessions shared by every tab (Sprint 2), and
-> booking: holding seats, checkout with the test card, and the ticket (Sprint 3). The "My bookings" list and the
-> sessions list on the account page follow in Sprint 4.
+> **Status:** feature-complete, hardening next. Done: the app shell, security headers, the `/v1` proxy to the API
+> (Sprint 0), the public catalog with the live seat map (Sprint 1), sign-in with sessions shared by every tab
+> (Sprint 2), booking: holding seats, checkout with the test card, and the ticket (Sprint 3), and "My bookings" with
+> the account's list of signed-in devices (Sprint 4). Sprint 5 is the accessibility, performance, and release pass.
 
 ## What it shows
 
@@ -22,10 +22,11 @@ Admin screens are out of scope (admins use the API directly).
 | `/schedule`       | One day's showtimes by movie: a two-week date strip (`?date=YYYY-MM-DD`) and a movie filter (`?movie=<id>`).                                                                                                                                                                              |
 | `/showtimes/<id>` | The live seat map: pick up to 10 seats with the mouse or the keyboard (arrow keys, Home/End, PageUp/PageDown, Space), then "Continue" to hold them. A guest's pick waits in the tab while they sign in. Seats you hold show as yours. Canceled and started showtimes are shown as closed. |
 | `/checkout/<id>`  | Your hold: the seats and total, a countdown to the end of the hold, the payment method (the API's local test card: pick how the payment should go), "Pay", and "Cancel hold". Signed-in users only.                                                                                       |
-| `/bookings/<id>`  | The ticket once paid: a QR code of the booking, when, where, which seats, and the receipt; an unpaid booking leads back to its checkout. Signed-in users only.                                                                                                                            |
+| `/bookings`       | My bookings: seats waiting for payment (with the time left), upcoming tickets (the soonest first), and past and canceled bookings, with "Load older bookings". Signed-in users only.                                                                                                      |
+| `/bookings/<id>`  | The ticket once paid: a QR code of the booking, when, where, which seats, and the receipt; an unpaid booking leads back to its checkout and can be canceled here. Signed-in users only.                                                                                                   |
 | `/login`          | Sign in; `?next=` (a path of this site) is where you go afterwards.                                                                                                                                                                                                                       |
 | `/register`       | Create an account; you are signed in right after.                                                                                                                                                                                                                                         |
-| `/account`        | Your profile, "Sign out" (this browser, every tab), and "Sign out everywhere" (every device). Signed-in users only.                                                                                                                                                                       |
+| `/account`        | Your profile and where you're signed in: each browser or device with a readable name, when it was last active, and "Sign out" for any other one; "Sign out" (this browser, every tab) and "Sign out everywhere" (every device). Signed-in users only.                                     |
 
 While you hold seats, the header shows the time left and leads back to the checkout ("Seats held · 12:34").
 
@@ -196,7 +197,22 @@ checkout ── Pay ──▶ store the attempt (key, method, token) ──▶ P
   default.
 - **Tabs stay in step.** Holding, canceling, and paying are announced on a second `BroadcastChannel`
   (`cinema-sync`, ids only), and the other tabs refetch what changed: the header's hold indicator, an open
-  checkout, the seat map.
+  checkout, the seat map, "My bookings".
+
+### My bookings and signed-in devices
+
+- **Two lists behind one page.** Seats waiting for payment come from `GET /v1/bookings?status=pending,processing`
+  (one request holds all of them; the header's hold indicator shares it). Everything else comes page by page from
+  `GET /v1/bookings?status=paid,expired,canceled`, newest first, and is split on screen: paid tickets for showtimes
+  that have not started ("Upcoming", the soonest first) and the rest ("Past & canceled"). No booking is listed twice.
+- **The list follows its holds.** While a payment is in flight, or a hold is past its deadline and waiting for the
+  API's worker, the unpaid list is asked again every 5 seconds; a booking that leaves it (paid, expired, canceled)
+  makes the history reload, so it moves to its new group by itself.
+- **Signed-in devices** come from `GET /v1/auth/sessions`. Each session's `User-Agent` becomes a readable name
+  ("Safari on iPhone") through a small labeler (`src/lib/user-agent.ts`: the common browsers and systems, no parser
+  library). Another device is signed out with `DELETE /v1/auth/sessions/<id>`: it can no longer refresh, and the API
+  refuses its access token at once (while its Redis is up), so that browser drops to sign-in on its next request.
+  This browser signs out with "Sign out", which also clears its tabs.
 
 ## Production topology
 
@@ -278,7 +294,7 @@ already running deployment instead of starting the dev server. Install the brows
 
 The specs register throwaway accounts (`e2e-<time>-<random>@example.com`) in the local database, and pay for some
 seats of tomorrow's showtimes with the test card; the API has no way to delete either. A full run signs up and signs
-in about 50 times, and with the API's default rate limits all of that counts against one per-address budget (30 per
+in about 60 times, and with the API's default rate limits all of that counts against one per-address budget (30 per
 minute, shared by every request through the proxy), so use an API with rate limits off for a full run. Four specs
 depend on the API's settings and skip or adapt otherwise:
 
@@ -303,7 +319,7 @@ WORKER_METRICS_ADDR=:0 PAYMENT_GRACE=11s EXPIRER_INTERVAL=1s RECONCILER_INTERVAL
 
 # in cinema-front:
 API_ORIGIN=http://localhost:8081 NEXT_PUBLIC_APP_URL=http://localhost:3002 pnpm build
-pnpm exec next start -p 3002
+API_ORIGIN=http://localhost:8081 pnpm exec next start -p 3002    # Server Components read API_ORIGIN at run time
 E2E_BASE_URL=http://localhost:3002 E2E_REFRESH_GRACE_SECONDS=2 E2E_PAYMENT_SETTLE_SECONDS=15 pnpm exec playwright test
 ```
 
@@ -336,6 +352,10 @@ API and run locally.
 - On phones, the "Seats held" strip appears under the header once the session is known, moving the page down by
   its height.
 - Only the API's local test payment provider exists, so the checkout shows its test tokens on purpose.
+- The API lists bookings by when they were made, so a ticket bought long before many later bookings shows under
+  "Upcoming" only once "Load older bookings" reaches it.
+- Through the Next rewrite, every signed-in device shows the Next server's address (see
+  [Client addresses and rate limits](#client-addresses-and-rate-limits)).
 
 ## Scripts
 
@@ -359,21 +379,22 @@ src/app/                  Routes (App Router); (site)/ = public, server-rendered
 src/components/ui/        shadcn primitives
 src/components/providers/ theme and TanStack Query providers
 src/components/layout/    site header and navigation, user menu, footer, theme toggle, page layout, section error boundary
-src/components/auth/      guards, sign-out notices, the auth card and form message
+src/components/auth/      guards, sign-out notices, the auth card and form message, the list of signed-in devices
 src/components/catalog/   poster, movie card and grid, showtime chip, schedule list, date strip, movie filter
 src/components/seat-map/  seat picker, seat map, seats, legend, selection summary, "you already hold seats" dialog
 src/components/checkout/  booking summary, hold timer, payment-method registry and the test card, cancel hold
-src/components/bookings/  ticket QR code, booking status badge, booking not found
+src/components/bookings/  booking card, ticket QR code, booking status badge, booking not found
 src/hooks/                shared clocks (has a showtime started? hold countdowns), seat selection, holding seats,
                           paying, canceling, active bookings, form focus
 src/lib/api/              generated types (schema.d.ts), server reads (server.ts), browser clients (public.ts,
                           client.ts), problem parsing, error messages
 src/lib/auth/             the session (session.ts), token store, hint cookie, broadcast channel, Web Lock,
                           ?next= checks, AuthProvider / useAuth
-src/lib/queries/          TanStack Query keys and options; booking, payment, and account calls
+src/lib/queries/          TanStack Query keys and options; booking, payment, account, and session calls
 src/lib/payments/         payment attempts (idempotency keys kept per tab), the local test tokens
 src/lib/                  time and money formatting, catalog, seat-map, booking, and checkout logic, idempotency keys,
-                          server-clock skew, the cinema-sync channel, per-tab storage, forms, logger, site constants
+                          server-clock skew, the cinema-sync channel, per-tab storage, the user-agent labeler, forms,
+                          logger, site constants
 src/schemas/              zod schemas of the forms
 src/test/                 test helpers (query client, fake tabs: BroadcastChannel, Web Locks, API; booking fixtures)
 tests/e2e/                Playwright specs; support/ (accounts, booking helpers, the fixture that stubs other hosts)

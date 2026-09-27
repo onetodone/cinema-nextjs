@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default function AccountPage() {
   return (
     <PageContainer className="max-w-3xl">
-      <PageHeader title="Account" description="Your profile, and how you're signed in." />
+      <PageHeader title="Account" description="Your profile, and where you're signed in." />
       <AuthGuard fallback={<AccountSkeleton />}>
         <AccountView />
       </AuthGuard>

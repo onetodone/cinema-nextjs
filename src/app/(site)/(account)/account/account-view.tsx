@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { LogOutIcon, RotateCwIcon } from 'lucide-react'
@@ -9,6 +9,7 @@ import { useAuth } from '@/lib/auth/context'
 import { signOut, signOutEverywhere } from '@/lib/auth/session'
 import { meQuery } from '@/lib/queries/account'
 import { formatDate } from '@/lib/time'
+import { SessionList } from '@/components/auth/session-list'
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -28,7 +29,7 @@ export function AccountView() {
   return (
     <div className="flex flex-col gap-6">
       <ProfileCard />
-      <SignInCard />
+      <SessionsCard />
     </div>
   )
 }
@@ -72,7 +73,9 @@ function ProfileCard() {
   )
 }
 
-function SignInCard() {
+function SessionsCard() {
+  const headingRef = useRef<HTMLHeadingElement>(null)
+
   function handleSignOut() {
     void signOut()
     toast.success('You have signed out.', { id: 'signed-out' })
@@ -82,19 +85,24 @@ function SignInCard() {
     <Card>
       <CardHeader>
         <CardTitle>
-          <h2 id="sign-in-heading">Signing in</h2>
+          <h2 id="sessions-heading" ref={headingRef} tabIndex={-1} className="outline-none">
+            Where you&apos;re signed in
+          </h2>
         </CardTitle>
         <CardDescription>
-          &ldquo;Sign out&rdquo; ends the session of this browser, in every tab. &ldquo;Sign out everywhere&rdquo; also
-          ends it on your other devices.
+          Browsers and devices signed in to your account. Signing one out ends its session at once. &ldquo;Sign out
+          everywhere&rdquo; ends them all, this one included.
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-wrap gap-2">
-        <Button variant="outline" size="lg" onClick={handleSignOut}>
-          <LogOutIcon data-icon="inline-start" aria-hidden="true" />
-          Sign out
-        </Button>
-        <SignOutEverywhereDialog />
+      <CardContent className="flex flex-col gap-4">
+        <SessionList headingRef={headingRef} />
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="lg" onClick={handleSignOut}>
+            <LogOutIcon data-icon="inline-start" aria-hidden="true" />
+            Sign out
+          </Button>
+          <SignOutEverywhereDialog />
+        </div>
       </CardContent>
     </Card>
   )

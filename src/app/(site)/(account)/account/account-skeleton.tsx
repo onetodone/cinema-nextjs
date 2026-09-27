@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { SessionListSkeleton } from '@/components/auth/session-list'
 import { Skeleton } from '@/components/ui/skeleton'
 
 /** The account page's cards while the session is checked and the profile loads. */
@@ -22,12 +23,15 @@ export function AccountSkeleton() {
       </Card>
       <Card>
         <CardHeader>
-          <Skeleton className="h-5 w-24" />
+          <Skeleton className="h-5 w-44" />
           <Skeleton className="h-4 w-full max-w-md" />
         </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          <Skeleton className="h-9 w-24" />
-          <Skeleton className="h-9 w-44" />
+        <CardContent className="flex flex-col gap-4">
+          <SessionListSkeleton />
+          <div className="flex flex-wrap gap-2">
+            <Skeleton className="h-9 w-24" />
+            <Skeleton className="h-9 w-44" />
+          </div>
         </CardContent>
       </Card>
     </div>

@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
-import { LogOutIcon, UserRoundIcon } from 'lucide-react'
+import { LogOutIcon, TicketIcon, UserRoundIcon } from 'lucide-react'
 import type { User } from '@/lib/api/types'
 import { useAuth } from '@/lib/auth/context'
 import { loginHref } from '@/lib/auth/next-path'
@@ -77,6 +77,10 @@ function AccountMenu({ user }: { user: User }) {
           </DropdownMenuLabel>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
+        <DropdownMenuLinkItem render={<Link href="/bookings" />}>
+          <TicketIcon aria-hidden="true" />
+          My bookings
+        </DropdownMenuLinkItem>
         <DropdownMenuLinkItem render={<Link href="/account" />}>
           <UserRoundIcon aria-hidden="true" />
           Account

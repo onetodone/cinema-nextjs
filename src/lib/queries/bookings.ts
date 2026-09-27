@@ -1,4 +1,4 @@
-import { queryOptions, type QueryClient } from '@tanstack/react-query'
+import { infiniteQueryOptions, queryOptions, type QueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api/client'
 import { unwrap, unwrapWithResponse } from '@/lib/api/problem'
 import type { Booking, BookingStatus } from '@/lib/api/types'
@@ -11,6 +11,12 @@ const REQUEST_TIMEOUT_MS = 20_000
 
 /** Bookings that hold seats and wait for payment. */
 export const ACTIVE_BOOKING_STATUSES: readonly BookingStatus[] = ['pending', 'processing']
+
+/** Bookings that are over, one way or another: the history part of "My bookings". */
+export const SETTLED_BOOKING_STATUSES: readonly BookingStatus[] = ['paid', 'expired', 'canceled']
+
+/** Bookings per page of "My bookings". */
+export const BOOKING_HISTORY_PAGE_SIZE = 20
 
 /** One booking of the caller. Every answer also updates the server-clock skew the hold countdown uses. */
 export function bookingQuery(bookingId: string) {
@@ -40,6 +46,27 @@ export function activeBookingsQuery() {
       recordServerTime(response)
       return data.items
     },
+  })
+}
+
+/**
+ * The caller's paid, expired, and canceled bookings, newest first, page by page ("Load more"). The unpaid ones come
+ * from `activeBookingsQuery`, which is complete in one request, so a booking is never listed twice.
+ */
+export function bookingHistoryQuery() {
+  return infiniteQueryOptions({
+    queryKey: queryKeys.private.bookingHistory(),
+    queryFn: ({ pageParam, signal }) =>
+      unwrap(
+        api.GET('/v1/bookings', {
+          params: {
+            query: { status: [...SETTLED_BOOKING_STATUSES], limit: BOOKING_HISTORY_PAGE_SIZE, cursor: pageParam },
+          },
+          signal,
+        }),
+      ),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.next_cursor,
   })
 }
 

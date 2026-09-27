@@ -13,6 +13,42 @@ export function activeBookingFor(bookings: readonly Booking[], showtimeId: numbe
   return bookings.find((booking) => booking.showtime.id === showtimeId && isActiveBooking(booking)) ?? null
 }
 
+/**
+ * Whether unpaid bookings are about to change with nobody here acting: a payment in flight settles, or a hold whose
+ * time is up (`now` by the server's clock) is released by the API's worker within seconds.
+ */
+export function awaitsSettlement(bookings: readonly Booking[], now: number): boolean {
+  return bookings.some(
+    (booking) =>
+      booking.status === 'processing' || (booking.status === 'pending' && instantOf(booking.expires_at) <= now),
+  )
+}
+
+export interface BookingHistoryGroups {
+  /** Paid tickets for showtimes that have not started, the soonest first. */
+  upcoming: Booking[]
+  /** Tickets of started showtimes, and holds that expired or were canceled: the newest booking first. */
+  past: Booking[]
+}
+
+/**
+ * Splits the caller's bookings that no longer hold seats for payment, as loaded page by page (newest booking first),
+ * by the viewer's clock. A booking seen twice (pages loaded while the list changed) counts once.
+ */
+export function groupBookingHistory(bookings: readonly Booking[], now: number): BookingHistoryGroups {
+  const seen = new Set<string>()
+  const upcoming: Booking[] = []
+  const past: Booking[] = []
+  for (const booking of bookings) {
+    if (seen.has(booking.id)) continue
+    seen.add(booking.id)
+    if (booking.status === 'paid' && instantOf(booking.showtime.starts_at) > now) upcoming.push(booking)
+    else past.push(booking)
+  }
+  upcoming.sort((a, b) => instantOf(a.showtime.starts_at) - instantOf(b.showtime.starts_at))
+  return { upcoming, past }
+}
+
 /** The unpaid booking whose hold ends first. */
 export function nextToExpire(bookings: readonly Booking[]): Booking | null {
   let next: Booking | null = null

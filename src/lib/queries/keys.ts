@@ -14,6 +14,10 @@ export const queryKeys = {
     bookings: () => ['private', 'bookings'] as const,
     /** The caller's unpaid bookings (pending or processing). */
     activeBookings: () => ['private', 'bookings', 'active'] as const,
+    /** The caller's other bookings (paid, expired, canceled), page by page, for "My bookings". */
+    bookingHistory: () => ['private', 'bookings', 'history'] as const,
     booking: (bookingId: string) => ['private', 'bookings', 'detail', bookingId] as const,
+    /** The caller's signed-in browsers and devices. */
+    sessions: () => ['private', 'sessions'] as const,
   },
 }

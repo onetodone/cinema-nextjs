@@ -1,19 +1,25 @@
 'use client'
 
 import Link from 'next/link'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { BanIcon, HourglassIcon, TicketIcon, TimerOffIcon } from 'lucide-react'
 import { isApiError } from '@/lib/api/errors'
+import { errorMessage } from '@/lib/api/messages'
 import type { Booking } from '@/lib/api/types'
 import { isBookingId } from '@/lib/bookings'
+import { clearPaymentAttempt } from '@/lib/payments/attempt'
 import { bookingQuery } from '@/lib/queries/bookings'
+import { queryKeys } from '@/lib/queries/keys'
 import { seatNames } from '@/lib/seat-map'
 import { formatCountdown, formatDate, formatLongDay, formatShowtime, localDateOf } from '@/lib/time'
+import { useCancelBooking } from '@/hooks/use-cancel-booking'
 import { useCountdown } from '@/hooks/use-countdown'
 import { BookingNotFound } from '@/components/bookings/booking-not-found'
 import { BookingStatusBadge } from '@/components/bookings/booking-status-badge'
 import { TicketQr } from '@/components/bookings/ticket-qr'
 import { SeatPriceList, ShowtimeFacts } from '@/components/checkout/booking-summary'
+import { CancelHoldButton } from '@/components/checkout/cancel-hold-button'
 import { BackLink } from '@/components/layout/back-link'
 import { LoadError } from '@/components/layout/load-error'
 import { Notice } from '@/components/layout/notice'
@@ -57,7 +63,7 @@ function BookingDetails({ booking }: { booking: Booking }) {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-4">
-        <BackLink href={`/movies/${showtime.movie.id}`}>{showtime.movie.title}</BackLink>
+        <BackLink href="/bookings">My bookings</BackLink>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
             {status === 'paid' ? 'Your ticket' : 'Your booking'}
@@ -74,10 +80,14 @@ function BookingDetails({ booking }: { booking: Booking }) {
           icon={status === 'pending' ? TicketIcon : HourglassIcon}
           role="none"
           title={status === 'pending' ? 'Waiting for your payment' : 'Your payment is being processed'}
+          // A payment in flight cannot be stopped: only a hold that waits for payment can be released.
           actions={
-            <Link href={`/checkout/${booking.id}`} className={buttonVariants({ size: 'lg' })}>
-              {status === 'pending' ? 'Continue to checkout' : 'View checkout'}
-            </Link>
+            <>
+              <Link href={`/checkout/${booking.id}`} className={buttonVariants({ size: 'lg' })}>
+                {status === 'pending' ? 'Continue to checkout' : 'View checkout'}
+              </Link>
+              {status === 'pending' ? <ReleaseSeatsButton booking={booking} /> : null}
+            </>
           }
         >
           {status === 'pending' ? (
@@ -119,6 +129,30 @@ function BookingDetails({ booking }: { booking: Booking }) {
       </section>
     </div>
   )
+}
+
+/** "Cancel hold" for a booking that waits for payment. The page then shows it canceled. */
+function ReleaseSeatsButton({ booking }: { booking: Booking }) {
+  const queryClient = useQueryClient()
+  const cancel = useCancelBooking()
+
+  async function releaseSeats(): Promise<boolean> {
+    try {
+      await cancel.mutateAsync({ bookingId: booking.id, showtimeId: booking.showtime.id })
+    } catch (error) {
+      toast.error(`Couldn’t release your seats. ${errorMessage(error)}`, { id: 'cancel-failed' })
+      return false
+    }
+    clearPaymentAttempt(booking.id)
+    // Shown at once (the refetch the cancel started confirms it), which also closes the dialog.
+    queryClient.setQueryData<Booking>(queryKeys.private.booking(booking.id), (current) =>
+      current ? { ...current, status: 'canceled' } : current,
+    )
+    toast.success('Your seats were released.', { id: 'released' })
+    return true
+  }
+
+  return <CancelHoldButton booking={booking} disabled={false} pending={cancel.isPending} onConfirm={releaseSeats} />
 }
 
 /** The ticket itself: the code to show at the entrance, and what it is for. */
