@@ -206,6 +206,8 @@ describe('CheckoutView', () => {
     await payWith()
 
     expect(await screen.findByText('Confirming your payment…')).toBeInTheDocument()
+    // "Pay" went away with the payment panel: focus goes to the page's heading.
+    expect(screen.getByRole('heading', { level: 1, name: 'Checkout' })).toHaveFocus()
   })
 
   it('BOOKING_ALREADY_PAID: opens the ticket', async () => {
@@ -226,6 +228,7 @@ describe('CheckoutView', () => {
     const notice = await screen.findByRole('alert')
     expect(notice).toHaveTextContent('This hold was canceled')
     expect(within(notice).getByRole('link', { name: 'Choose seats again' })).toHaveAttribute('href', '/showtimes/7')
+    expect(screen.getByRole('heading', { level: 1, name: 'Checkout' })).toHaveFocus()
   })
 
   it('PAYMENT_REFUNDED: says the late charge went back', async () => {

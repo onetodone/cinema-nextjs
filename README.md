@@ -7,28 +7,28 @@ This is a **frontend only** — a Next.js app with no database and no backend of
 comes from the separate `cinema-api` Go service, which must be running for this app to do anything useful.
 Admin screens are out of scope (admins use the API directly).
 
-> **Status:** feature-complete, hardening next. Done: the app shell, security headers, the `/v1` proxy to the API
-> (Sprint 0), the public catalog with the live seat map (Sprint 1), sign-in with sessions shared by every tab
-> (Sprint 2), booking: holding seats, checkout with the test card, and the ticket (Sprint 3), and "My bookings" with
-> the account's list of signed-in devices (Sprint 4). Sprint 5 is the accessibility, performance, and release pass.
+> **Status:** 1.0 — complete. The public catalog with a live seat map, sign-in with sessions shared by every tab,
+> holding seats, checkout with the API's test card, tickets, "My bookings", and the list of signed-in devices; with
+> an accessibility and performance pass (see [Accessibility](#accessibility) and [Performance](#performance)).
 
 ## What it shows
 
-| Page              | What you see                                                                                                                                                                                                                                                                              |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/`               | Now showing (the first movies) and today's showtimes by movie.                                                                                                                                                                                                                            |
-| `/movies`         | Every movie, with "Load more" for the next pages.                                                                                                                                                                                                                                         |
-| `/movies/<id>`    | A movie with its showtimes of the next two weeks, grouped by day.                                                                                                                                                                                                                         |
-| `/schedule`       | One day's showtimes by movie: a two-week date strip (`?date=YYYY-MM-DD`) and a movie filter (`?movie=<id>`).                                                                                                                                                                              |
-| `/showtimes/<id>` | The live seat map: pick up to 10 seats with the mouse or the keyboard (arrow keys, Home/End, PageUp/PageDown, Space), then "Continue" to hold them. A guest's pick waits in the tab while they sign in. Seats you hold show as yours. Canceled and started showtimes are shown as closed. |
-| `/checkout/<id>`  | Your hold: the seats and total, a countdown to the end of the hold, the payment method (the API's local test card: pick how the payment should go), "Pay", and "Cancel hold". Signed-in users only.                                                                                       |
-| `/bookings`       | My bookings: seats waiting for payment (with the time left), upcoming tickets (the soonest first), and past and canceled bookings, with "Load older bookings". Signed-in users only.                                                                                                      |
-| `/bookings/<id>`  | The ticket once paid: a QR code of the booking, when, where, which seats, and the receipt; an unpaid booking leads back to its checkout and can be canceled here. Signed-in users only.                                                                                                   |
-| `/login`          | Sign in; `?next=` (a path of this site) is where you go afterwards.                                                                                                                                                                                                                       |
-| `/register`       | Create an account; you are signed in right after.                                                                                                                                                                                                                                         |
-| `/account`        | Your profile and where you're signed in: each browser or device with a readable name, when it was last active, and "Sign out" for any other one; "Sign out" (this browser, every tab) and "Sign out everywhere" (every device). Signed-in users only.                                     |
+| Page              | What you see                                                                                                                                                                                                                                                                            |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/`               | Now showing (the first movies) and today's showtimes by movie.                                                                                                                                                                                                                          |
+| `/movies`         | Every movie, with "Load more" for the next pages.                                                                                                                                                                                                                                       |
+| `/movies/<id>`    | A movie with its showtimes of the next two weeks, grouped by day.                                                                                                                                                                                                                       |
+| `/schedule`       | One day's showtimes by movie: a two-week date strip (`?date=YYYY-MM-DD`) and a movie filter (`?movie=<id>`).                                                                                                                                                                            |
+| `/showtimes/<id>` | The live seat map: pick up to 10 seats with the mouse or the keyboard (arrow keys, Home/End, PageUp/PageDown, Space), then "Continue" to hold them. A guest's pick waits in the tab while they sign in. Seats you hold show as yours. Canceled, started, and sold-out showtimes say so. |
+| `/checkout/<id>`  | Your hold: the seats and total, a countdown to the end of the hold, the payment method (the API's local test card: pick how the payment should go), "Pay", and "Cancel hold". Signed-in users only.                                                                                     |
+| `/bookings`       | My bookings: seats waiting for payment (with the time left), upcoming tickets (the soonest first), and past and canceled bookings, with "Load older bookings". Signed-in users only.                                                                                                    |
+| `/bookings/<id>`  | The ticket once paid: a QR code of the booking, when, where, which seats, and the receipt; an unpaid booking leads back to its checkout and can be canceled here. Signed-in users only.                                                                                                 |
+| `/login`          | Sign in; `?next=` (a path of this site) is where you go afterwards.                                                                                                                                                                                                                     |
+| `/register`       | Create an account; you are signed in right after.                                                                                                                                                                                                                                       |
+| `/account`        | Your profile and where you're signed in: each browser or device with a readable name, when it was last active, and "Sign out" for any other one; "Sign out" (this browser, every tab) and "Sign out everywhere" (every device). Signed-in users only.                                   |
 
-While you hold seats, the header shows the time left and leads back to the checkout ("Seats held · 12:34").
+While you hold seats, the header shows the time left and leads back to the checkout ("Seats held · 12:34"; on phones,
+a strip under the header).
 
 Times are the cinema's wall-clock times exactly as the API sends them (never converted to the browser's time
 zone), and prices are formatted from the API's integer cents.
@@ -214,10 +214,91 @@ checkout ── Pay ──▶ store the attempt (key, method, token) ──▶ P
   refuses its access token at once (while its Redis is up), so that browser drops to sign-in on its next request.
   This browser signs out with "Sign out", which also clears its tabs.
 
+## Accessibility
+
+The target is WCAG 2.2 AA. axe finds nothing on any page in either theme, with dialogs and menus open, or at a
+phone's 320 CSS pixels, and one end-to-end spec books a ticket with the keyboard alone.
+
+- **Keyboard.** "Skip to content" is the first stop on every page. The seat map is a single tab stop: the arrow keys,
+  Home/End, and PageUp/PageDown move between seats, Space or Enter picks one. Menus and dialogs follow the WAI-ARIA
+  patterns — arrow keys, Escape, focus kept inside while open and given back to what opened them. Every control shows
+  a focus ring, and scroll padding keeps it clear of the sticky header.
+- **Focus follows the page.** After a navigation, focus moves to the new page's main heading (Next's route announcer
+  reads the new title as well); switching the day or the movie filter keeps focus on the control. When the control
+  that had focus goes away with what changed on the page — "Pay" replaced by the payment's outcome, "Cancel hold" by
+  the canceled booking — focus moves to the page's heading rather than falling back to the top of the document.
+- **Screen readers.** Seats are toggle buttons with names like "Row C, seat 7, VIP, $15.00, available"; states and
+  seat types never rely on colour alone (icons, the VIP seats' thick top edge, the wheelchair symbol). The hold
+  countdown is a timer announced at 5, 2, and 1 minutes left; outcomes (a declined card, seats someone just took, more
+  movies loaded) are announced; links styled as buttons remain links.
+- **Motion.** With "reduce motion" set in the system, animations and transitions end at once: spinners and skeletons
+  stand still, dialogs, menus, and toasts appear without zooming or sliding.
+- **Contrast and reflow.** Both themes pass axe's contrast checks (light mode uses a darker amber than dark mode). At
+  320 CSS pixels no page scrolls sideways; a wide hall scrolls inside its own frame.
+
+## Performance
+
+- **What the browser downloads.** Pages are prerendered shells, and the catalog is rendered on the server. The
+  JavaScript a page loads first (the scripts its HTML references, gzip): about 200 KiB for the catalog pages and "My
+  bookings", 210 KiB for the seat map, 220–245 KiB for sign-in, the account, checkout, and the ticket — roughly half
+  of it React and Next.js themselves. Code that few visitors need loads when needed: the account menu once someone is
+  signed in, the "you already hold seats here" dialog when it opens (fetched ahead for a viewer who holds seats
+  there). The sign-in forms validate with Zod Mini.
+- **Nothing jumps.** Loading skeletons have the pages' shapes, posters sit in fixed 2:3 frames over a drawn fallback,
+  fonts are self-hosted by `next/font`, and what arrives only after the session check — the account menu, the hold
+  strip on phones, the "You're holding" notice — is placed where it moves nothing already on screen. The main area
+  is at least a screen tall, so content that arrives late never pushes the footer out of view. Measured Cumulative
+  Layout Shift: 0.000 for the public pages on a desktop and on a phone, at most 0.03 for signed-in pages on a phone
+  with a hold ("good" is at most 0.1).
+- **The seat map at 1 000 seats**, the API's largest hall. Seats are memoised buttons, and a poll's answer is merged
+  into the previous one (TanStack Query's structural sharing), so a poll re-renders only the seats that changed — none
+  when nothing did, and then the answer is a bodyless `304` anyway. Picking a seat re-renders two. In Chromium with its
+  CPU slowed down four times, a 1 000-seat map is on screen about 120 ms after its answer arrives, and the slowest
+  click or key press takes about 100 ms to paint (Interaction to Next Paint, "good" is at most 200 ms).
+- **Images.** Posters come from hosts that admins choose, so Next does not resize them (`unoptimized`); the first row is
+  preloaded and the rest load lazily. The ticket's QR code is an inline SVG.
+
+`tests/e2e/performance.spec.ts` measures the layout shifts and the large hall on every run and prints the numbers as
+annotations (`pnpm exec playwright test tests/e2e/performance.spec.ts --reporter=list`). To look inside the bundles, run
+`pnpm next experimental-analyze` (it builds on its own; do not run it under a running `pnpm start`, whose `.next` it
+replaces).
+
 ## Production topology
 
 The Next rewrite is the development and simple-deployment path. In production, put an edge proxy (Caddy,
-nginx) in front of one public origin that sends `/v1/*` straight to the API and everything else to Next.
+nginx) in front of one public origin that sends `/v1/*` straight to the API and everything else to Next:
+
+```caddyfile
+cinema.example.com {
+	# The API, straight: Caddy adds the client's address to X-Forwarded-For.
+	handle /v1/* {
+		reverse_proxy 127.0.0.1:8080
+	}
+	# Everything else: the Next server.
+	handle {
+		reverse_proxy 127.0.0.1:3001
+	}
+}
+```
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name cinema.example.com;
+    # ssl_certificate …; ssl_certificate_key …;
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    location /v1/ { proxy_pass http://127.0.0.1:8080; }   # the API, straight
+    location /    { proxy_pass http://127.0.0.1:3001; }   # the Next server
+}
+```
+
+With that, set on the API `AUTH_COOKIE_SECURE=true` and `HTTP_TRUSTED_PROXIES` to the edge proxy's address (see
+below), and on the front `NEXT_PUBLIC_APP_URL=https://cinema.example.com` and `API_ORIGIN` to where the Next server
+reaches the API (Server Components read the catalog there).
 
 ### Running a production build
 
@@ -326,8 +407,48 @@ E2E_BASE_URL=http://localhost:3002 E2E_REFRESH_GRACE_SECONDS=2 E2E_PAYMENT_SETTL
 The test worker shares the database with your usual API: it also expires that API's overdue holds and settles its
 stuck payments, which is what its own worker would do.
 
-CI (`.github/workflows/ci.yml`) runs `lint:ci`, `typecheck`, `test`, and `build`. The end-to-end tests need the
-API and run locally.
+What the specs cover: `smoke` (security headers, the proxy, the theme), `catalog` (server rendering, the schedule,
+picking seats, live updates, not-found pages, robots and sitemap), `auth` (sign-in and sessions across tabs and
+devices), `booking` (holds, every payment path, seat races, expiry), `account` (my bookings, signed-in devices),
+`a11y` (a keyboard-only booking, focus after navigations and dialogs, reduced motion, axe on dialogs, menus, phone
+widths, and not-found pages), and `performance` (layout shifts, the 1 000-seat hall). axe runs on every page in both
+themes.
+
+CI (`.github/workflows/ci.yml`) runs `format:check`, `lint:ci`, `typecheck`, `test`, and `build`. The end-to-end tests
+need the API and run locally.
+
+### Checking a release by hand
+
+With the API and its worker running (`PAYMENT_LOCAL_ENABLED=true`) and `pnpm dev` (or a production build):
+
+1. `/`, `/movies`, `/movies/<id>`, `/schedule?date=…` render on the server: view the source, the content is there.
+2. On `/showtimes/<id>`, pick two seats as a guest → "Continue" → sign in → the seats are picked again.
+3. Hold them → the checkout counts down; another browser's seat map shows them held within about 5 seconds.
+4. Pay with `tok_declined` → a message, the hold stays payable; pay with `tok_success` → the ticket with its QR code.
+5. Pay a new hold with `tok_timeout` → "Confirming your payment…" → settled by the worker.
+6. Let a hold run out (`BOOKING_HOLD_TTL=30s` on the API) → the checkout closes, and the seats are free again.
+7. DevTools: no token in `localStorage` or `sessionStorage`; cookies: `cinema_refresh` (`HttpOnly`, `Path=/v1/auth`)
+   and the non-secret `cinema_signed_in` hint; every API call goes to this app's origin, under `/v1/`.
+8. Two tabs: sign out in one → the other, on a private page, goes to sign-in.
+9. `JWT_TTL=30s` and three tabs open → one `/v1/auth/refresh` per expiry, in all tabs together.
+10. `/account` shows the sessions of two browsers; signing out the other one signs it out.
+11. The theme toggle survives a reload; the whole booking works with the keyboard alone.
+12. `pnpm run format && pnpm run lint && pnpm run typecheck && pnpm test && pnpm run build && pnpm test:e2e`.
+
+## Troubleshooting
+
+- **Signing in seems to work, then you are signed out again at once** — the refresh cookie is not stored: the API
+  sends it `Secure` (`AUTH_COOKIE_SECURE=true`, its default) and the app is served over plain `http://` other than
+  `localhost`. See [the refresh-cookie invariant](#the-refresh-cookie-invariant).
+- **`429 Too Many Requests` while signing in, or during the end-to-end tests** — through the Next rewrite every
+  visitor counts against one per-address budget (30 sign-ins a minute by default). Wait a minute, or run the tests
+  against an API with rate limits off (see [Testing](#testing)).
+- **Every API call fails in a production build, but Server Components show data** — the `/v1` rewrite is fixed at
+  build time: rebuild with the right `API_ORIGIN` (the server reads it at run time, the rewrite does not).
+- **Posters do not show** — the Content-Security-Policy allows images from `https:` hosts only; a poster URL on plain
+  `http://` is blocked, and the drawn fallback shows instead.
+- **`next start` warns that it "does not work with output: standalone"** — expected; for production run
+  `node .next/standalone/server.js` (see [Running a production build](#running-a-production-build)).
 
 ## Known limitations
 
@@ -337,8 +458,8 @@ API and run locally.
 - Unknown movie and showtime ids show a "not found" page marked `noindex`, but with HTTP status `200`: with Cache
   Components the page shell streams before the data is read, and a real `404` would need an API call in
   `proxy.ts` on every request.
-- Whether a showtime has started is judged by the viewer's clock, after the page loads; the API has the final say
-  when seats are held.
+- Whether a showtime has started is judged by the server's clock when the page is rendered, and by the viewer's clock
+  after that; the API has the final say when seats are held.
 - Movies without a poster (or with a broken poster URL) get a designed fallback built from the title.
 - The access token lives in one tab's memory: a reload with no other tab open costs one refresh call, and a browser
   whose `cinema_signed_in` hint cookie was deleted (but not its refresh cookie) looks signed out until the next
@@ -349,8 +470,6 @@ API and run locally.
   from another tab or browser. The booking itself shows every tab where the payment stands.
 - After 3 minutes the checkout stops following a payment in flight and says it will settle later; "Check again"
   asks once more.
-- On phones, the "Seats held" strip appears under the header once the session is known, moving the page down by
-  its height.
 - Only the API's local test payment provider exists, so the checkout shows its test tokens on purpose.
 - The API lists bookings by when they were made, so a ticket bought long before many later bookings shows under
   "Upcoming" only once "Load older bookings" reaches it.
@@ -359,33 +478,36 @@ API and run locally.
 
 ## Scripts
 
-| Command          | Description                                                 |
-| ---------------- | ----------------------------------------------------------- |
-| `pnpm dev`       | Start the dev server (Turbopack) on `PORT`.                 |
-| `pnpm build`     | Production build (`output: 'standalone'`).                  |
-| `pnpm start`     | Start the production server on `PORT`.                      |
-| `pnpm lint`      | ESLint with autofix.                                        |
-| `pnpm lint:ci`   | ESLint without autofix (as CI runs it).                     |
-| `pnpm typecheck` | `next typegen` + `tsc --noEmit`.                            |
-| `pnpm format`    | Prettier.                                                   |
-| `pnpm test`      | Unit and component tests.                                   |
-| `pnpm test:e2e`  | End-to-end tests.                                           |
-| `pnpm api:types` | Regenerate `src/lib/api/schema.d.ts` from the API contract. |
+| Command             | Description                                                 |
+| ------------------- | ----------------------------------------------------------- |
+| `pnpm dev`          | Start the dev server (Turbopack) on `PORT`.                 |
+| `pnpm build`        | Production build (`output: 'standalone'`).                  |
+| `pnpm start`        | Start the production server on `PORT`.                      |
+| `pnpm lint`         | ESLint with autofix.                                        |
+| `pnpm lint:ci`      | ESLint without autofix (as CI runs it).                     |
+| `pnpm typecheck`    | `next typegen` + `tsc --noEmit`.                            |
+| `pnpm format`       | Prettier.                                                   |
+| `pnpm format:check` | Prettier without writing (as CI runs it).                   |
+| `pnpm test`         | Unit and component tests.                                   |
+| `pnpm test:e2e`     | End-to-end tests.                                           |
+| `pnpm api:types`    | Regenerate `src/lib/api/schema.d.ts` from the API contract. |
 
 ## Project structure
 
 ```
-src/app/                  Routes (App Router); (site)/ = public, server-rendered pages; sitemap.ts, robots.ts
+src/app/                  Routes (App Router); (site)/ = the site layout (header, the one <main>, footer), its pages and
+                          error page; sitemap.ts, robots.ts; the not-found page for unknown addresses
 src/components/ui/        shadcn primitives
 src/components/providers/ theme and TanStack Query providers
-src/components/layout/    site header and navigation, user menu, footer, theme toggle, page layout, section error boundary
+src/components/layout/    site header and navigation, user menu (the account menu loads lazily), hold pill and strip,
+                          footer, theme toggle, page layout, section error boundary, focus after navigations
 src/components/auth/      guards, sign-out notices, the auth card and form message, the list of signed-in devices
 src/components/catalog/   poster, movie card and grid, showtime chip, schedule list, date strip, movie filter
 src/components/seat-map/  seat picker, seat map, seats, legend, selection summary, "you already hold seats" dialog
 src/components/checkout/  booking summary, hold timer, payment-method registry and the test card, cancel hold
 src/components/bookings/  booking card, ticket QR code, booking status badge, booking not found
 src/hooks/                shared clocks (has a showtime started? hold countdowns), seat selection, holding seats,
-                          paying, canceling, active bookings, form focus
+                          paying, canceling, active bookings, focus (invalid fields, content that changed)
 src/lib/api/              generated types (schema.d.ts), server reads (server.ts), browser clients (public.ts,
                           client.ts), problem parsing, error messages
 src/lib/auth/             the session (session.ts), token store, hint cookie, broadcast channel, Web Lock,
@@ -395,7 +517,7 @@ src/lib/payments/         payment attempts (idempotency keys kept per tab), the 
 src/lib/                  time and money formatting, catalog, seat-map, booking, and checkout logic, idempotency keys,
                           server-clock skew, the cinema-sync channel, per-tab storage, the user-agent labeler, forms,
                           logger, site constants
-src/schemas/              zod schemas of the forms
+src/schemas/              Zod Mini schemas of the forms
 src/test/                 test helpers (query client, fake tabs: BroadcastChannel, Web Locks, API; booking fixtures)
 tests/e2e/                Playwright specs; support/ (accounts, booking helpers, the fixture that stubs other hosts)
 next.config.ts            /v1 rewrite, security headers, Cache Components, standalone output

@@ -24,6 +24,7 @@ import { bookingQuery, refreshAfterBookingsChange } from '@/lib/queries/bookings
 import { paymentMethodsQuery } from '@/lib/queries/payments'
 import { useCancelBooking } from '@/hooks/use-cancel-booking'
 import { useCountdown } from '@/hooks/use-countdown'
+import { useFocusOnChange } from '@/hooks/use-focus-on-change'
 import { usePayment, type PaymentFeedback } from '@/hooks/use-payment'
 import { BookingNotFound } from '@/components/bookings/booking-not-found'
 import { BookingSummary } from '@/components/checkout/booking-summary'
@@ -68,7 +69,9 @@ function CheckoutLoader({ bookingId }: { bookingId: string }) {
   if (booking) return <Checkout booking={booking} />
   if (isApiError(error) && error.status === 404) return <BookingNotFound />
   if (error) {
-    return <LoadError what="this booking" error={error} onRetry={() => void refetch()} retrying={isRefetching} />
+    return (
+      <LoadError what="this booking" error={error} onRetry={() => void refetch()} retrying={isRefetching} pageHeading />
+    )
   }
   return <CheckoutSkeleton />
 }
@@ -80,6 +83,8 @@ function Checkout({ booking }: { booking: Booking }) {
   const remaining = useCountdown(booking.status === 'pending' ? booking.expires_at : null, booking.created_at)
   const screen = checkoutScreen({ status: booking.status, remainingMs: remaining, closedReason: payment.closedReason })
   const showtimeHref = `/showtimes/${booking.showtime.id}`
+  // "Pay" (or whatever had focus in the payment panel) goes away when the screen changes: focus goes to the heading.
+  const headingRef = useFocusOnChange<HTMLHeadingElement>(screen.name)
 
   // An attempt that got no answer before a reload (or a dropped connection) is sent again as it was, so the viewer
   // sees what became of it. A booking that is paid or closed has nothing left to find out.
@@ -112,7 +117,9 @@ function Checkout({ booking }: { booking: Booking }) {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-4">
         <BackLink href={showtimeHref}>{screen.name === 'ready' ? 'Back to seats' : 'Showtime'}</BackLink>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Checkout</h1>
+        <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-semibold tracking-tight sm:text-4xl">
+          Checkout
+        </h1>
       </div>
 
       {screen.name === 'ready' ? (

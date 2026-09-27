@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "dotenv -e .env -- sh -c 'next start -p ${PORT:-3001}'",
     "format": "prettier --write \"**/*.{ts,tsx}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx}\"",
     "lint": "eslint . --fix",
     "lint:ci": "eslint .",
     "typecheck": "next typegen && tsc --noEmit",

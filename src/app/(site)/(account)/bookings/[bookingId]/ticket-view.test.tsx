@@ -89,6 +89,8 @@ describe('TicketView', () => {
 
     expect(await screen.findByText('This booking was canceled')).toBeInTheDocument()
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    // The button and its dialog are gone: focus goes to the page's heading rather than to the document.
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Your booking' })).toHaveFocus())
     expect(deletes).toBe(1)
     expect(toast.success).toHaveBeenCalledWith('Your seats were released.', { id: 'released' })
     expect(readPaymentAttempt(BOOKING_ID)).toBeNull()

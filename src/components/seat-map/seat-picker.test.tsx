@@ -74,12 +74,15 @@ function seatMap(overrides: (seat: Seat) => Partial<Seat> = () => ({})): SeatMap
   }
 }
 
-function renderPicker(props: { initial?: SeatMap; startsAt?: string; canceled?: boolean } = {}) {
+function renderPicker(
+  props: { initial?: SeatMap; startsAt?: string; canceled?: boolean; startedWhenFetched?: boolean } = {},
+) {
   return renderWithQueryClient(
     <SeatPicker
       showtimeId={7}
       startsAt={props.startsAt ?? FUTURE}
       canceled={props.canceled ?? false}
+      startedWhenFetched={props.startedWhenFetched}
       initialSeatMap={props.initial ?? seatMap()}
       fetchedAt={Date.now()}
     />,
@@ -226,6 +229,22 @@ describe('SeatPicker', () => {
 
     expect(screen.getByText('This showtime has started.')).toBeInTheDocument()
     expect(seatButton('A', 1)).toHaveAttribute('aria-disabled', 'true')
+  })
+
+  it('closes sales from the first render when the server saw the showtime start', () => {
+    renderPicker({ startsAt: PAST, startedWhenFetched: true })
+
+    expect(screen.getByText('This showtime has started.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Continue/ })).toBeDisabled()
+  })
+
+  it('says when every seat is sold or held, and that held seats may come back', () => {
+    renderPicker({ initial: seatMap((seat) => ({ status: seat.id % 2 === 0 ? 'held' : 'sold' })) })
+
+    expect(screen.getByRole('status')).toHaveTextContent(
+      "This showtime is sold out.Seats on hold go back on sale if they aren't paid for in time",
+    )
+    expect(screen.getByText(/0 of 12 seats free/)).toBeInTheDocument()
   })
 })
 

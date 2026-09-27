@@ -1,25 +1,18 @@
 'use client'
 
+import { lazy, Suspense } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { toast } from 'sonner'
-import { LogOutIcon, TicketIcon, UserRoundIcon } from 'lucide-react'
-import type { User } from '@/lib/api/types'
 import { useAuth } from '@/lib/auth/context'
 import { loginHref } from '@/lib/auth/next-path'
-import { signOut } from '@/lib/auth/session'
-import { Button, buttonVariants } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuLinkItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { buttonVariants } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+
+// The menu (Base UI's Menu and its positioning code: about a fifth of the JavaScript every page shared) loads only
+// once someone is signed in, so guests never download it.
+const AccountMenu = lazy(() =>
+  import('@/components/layout/account-menu').then((module) => ({ default: module.AccountMenu })),
+)
 
 /**
  * The header's account area: a placeholder of the same size while the session is checked (always, during server
@@ -29,7 +22,13 @@ export function UserMenu() {
   const { status, user } = useAuth()
 
   if (status === 'loading') return <Skeleton className="h-8 w-18" />
-  if (status === 'authenticated' && user) return <AccountMenu user={user} />
+  if (status === 'authenticated' && user) {
+    return (
+      <Suspense fallback={<Skeleton className="size-8 rounded-full" />}>
+        <AccountMenu user={user} />
+      </Suspense>
+    )
+  }
   return <SignInLink />
 }
 
@@ -48,49 +47,5 @@ function SignInLink() {
     <Link href={href} className={buttonVariants({ variant: 'outline' })}>
       Sign in
     </Link>
-  )
-}
-
-function AccountMenu({ user }: { user: User }) {
-  function handleSignOut() {
-    void signOut()
-    toast.success('You have signed out.', { id: 'signed-out' })
-  }
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={<Button variant="ghost" size="icon" className="rounded-full" aria-label={`Account: ${user.email}`} />}
-      >
-        <span
-          aria-hidden="true"
-          className="flex size-7 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground uppercase"
-        >
-          {user.email.charAt(0)}
-        </span>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-64">
-        <DropdownMenuGroup>
-          <DropdownMenuLabel className="flex flex-col gap-0.5">
-            Signed in as
-            <span className="truncate text-sm font-medium text-popover-foreground">{user.email}</span>
-          </DropdownMenuLabel>
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuLinkItem render={<Link href="/bookings" />}>
-          <TicketIcon aria-hidden="true" />
-          My bookings
-        </DropdownMenuLinkItem>
-        <DropdownMenuLinkItem render={<Link href="/account" />}>
-          <UserRoundIcon aria-hidden="true" />
-          Account
-        </DropdownMenuLinkItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={handleSignOut}>
-          <LogOutIcon aria-hidden="true" />
-          Sign out
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
   )
 }

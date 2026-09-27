@@ -21,7 +21,7 @@ type Variant = 'pill' | 'bar'
 /**
  * "Seats held · 12:34" in the header while the signed-in user has an unpaid booking, leading back to its checkout
  * (the one that runs out first, if there are several). Hidden on that checkout itself. The header shows it as a
- * `pill` in its row from the `sm` breakpoint up, and as a full-width `bar` under the row on phones, where the row
+ * `pill` in its row from the `sm` breakpoint up, and as a full-width `bar` under the header on phones, where the row
  * has no room left.
  */
 export function ActiveHoldPill({ variant = 'pill' }: { variant?: Variant }) {
@@ -63,22 +63,26 @@ function Pill({ booking, variant }: { booking: Booking; variant: Variant }) {
     : 'border-primary/50 bg-primary/10 text-foreground hover:bg-primary/20'
 
   if (variant === 'bar') {
+    // On an opaque backing: the page scrolls under it.
     return (
-      <Link
-        href={href}
-        aria-label={label}
-        className={cn(
-          'flex h-9 items-center gap-2 border-t px-4 text-sm font-medium tabular-nums transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset',
-          tone,
-        )}
-      >
-        {icon}
-        <span className="flex-1">{processing ? 'Payment processing' : `Seats held · ${time} left`}</span>
-        <span className="inline-flex items-center gap-1">
-          Checkout
-          <ArrowRightIcon className="size-3.5" aria-hidden="true" />
-        </span>
-      </Link>
+      <div className="bg-background shadow-xs">
+        <Link
+          href={href}
+          aria-label={label}
+          data-hold-strip=""
+          className={cn(
+            'flex h-8 items-center gap-2 border-b px-4 text-sm font-medium tabular-nums transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:ring-inset',
+            tone,
+          )}
+        >
+          {icon}
+          <span className="flex-1">{processing ? 'Payment processing' : `Seats held · ${time} left`}</span>
+          <span className="inline-flex items-center gap-1">
+            Checkout
+            <ArrowRightIcon className="size-3.5" aria-hidden="true" />
+          </span>
+        </Link>
+      </div>
     )
   }
   return (

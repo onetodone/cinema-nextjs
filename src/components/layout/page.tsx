@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
+/** A page's content column, inside the site layout's `<main>`. */
 export function PageContainer({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <main id="main" className={cn('mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-4 py-8 sm:py-12', className)}>
+    <div className={cn('mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-4 py-8 sm:py-12', className)}>
       {children}
-    </main>
+    </div>
   )
 }
 

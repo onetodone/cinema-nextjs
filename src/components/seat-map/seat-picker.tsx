@@ -1,11 +1,19 @@
 'use client'
 
-import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useEffectEvent, useLayoutEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { AlertTriangleIcon, BanIcon, CircleDotIcon, ClockIcon, SearchXIcon, TicketIcon } from 'lucide-react'
+import {
+  AlertTriangleIcon,
+  BanIcon,
+  CircleDotIcon,
+  ClockIcon,
+  SearchXIcon,
+  TicketIcon,
+  TicketXIcon,
+} from 'lucide-react'
 import type { Booking, Seat, SeatMap as SeatMapData } from '@/lib/api/types'
 import { errorMessage } from '@/lib/api/messages'
 import { useAuth } from '@/lib/auth/context'
@@ -24,11 +32,16 @@ import { useHoldSeats } from '@/hooks/use-hold-seats'
 import { useHasStarted } from '@/hooks/use-now'
 import { useSeatSelection } from '@/hooks/use-seat-selection'
 import { Notice } from '@/components/layout/notice'
-import { ActiveBookingDialog } from '@/components/seat-map/active-booking-dialog'
 import { SeatLegend } from '@/components/seat-map/legend'
 import { SeatMap } from '@/components/seat-map/seat-map'
 import { SelectionSummary, type SummaryError } from '@/components/seat-map/selection-summary'
 import { buttonVariants } from '@/components/ui/button'
+
+// Only a viewer who already holds seats here ever sees this dialog: its code (Base UI's dialog) loads when needed.
+const loadActiveBookingDialog = () => import('@/components/seat-map/active-booking-dialog')
+const ActiveBookingDialog = lazy(() =>
+  loadActiveBookingDialog().then((module) => ({ default: module.ActiveBookingDialog })),
+)
 
 /** How long seats that a hold found taken keep flashing. */
 const JUST_TAKEN_MS = 4_000
@@ -39,6 +52,8 @@ interface SeatPickerProps {
   showtimeId: number
   startsAt: string
   canceled: boolean
+  /** The showtime had started when the server rendered the page (the viewer's clock takes over after hydration). */
+  startedWhenFetched?: boolean
   /** The server's snapshot of the map, and when it was taken (epoch ms). */
   initialSeatMap: SeatMapData
   fetchedAt: number
@@ -52,11 +67,19 @@ interface SeatPickerProps {
  * and picked again when they come back. Seats the viewer already holds show as theirs, with the way to their
  * checkout.
  */
-export function SeatPicker({ showtimeId, startsAt, canceled, initialSeatMap, fetchedAt }: SeatPickerProps) {
+export function SeatPicker({
+  showtimeId,
+  startsAt,
+  canceled,
+  startedWhenFetched = false,
+  initialSeatMap,
+  fetchedAt,
+}: SeatPickerProps) {
   const router = useRouter()
   const queryClient = useQueryClient()
   const { status } = useAuth()
-  const started = useHasStarted(startsAt)
+  // The server's answer renders with the page, so a showtime that has started shows closed from the first paint.
+  const started = useHasStarted(startsAt) || startedWhenFetched
   /** What a hold answer revealed: sales are over, or the showtime is gone. */
   const [closed, setClosed] = useState<'not-bookable' | 'not-found' | null>(null)
   const bookable = !canceled && !started && closed === null
@@ -84,6 +107,9 @@ export function SeatPicker({ showtimeId, startsAt, canceled, initialSeatMap, fet
   const [holdError, setHoldError] = useState<SummaryError | null>(null)
   const [justTaken, setJustTaken] = useState<ReadonlySet<number>>(NO_IDS)
   const [dialogBookingId, setDialogBookingId] = useState<string | null>(null)
+  // Mounted from its first opening on, so that it can animate out when it closes.
+  const [dialogMounted, setDialogMounted] = useState(false)
+  if (dialogBookingId !== null && !dialogMounted) setDialogMounted(true)
 
   // A pick saved before signing in comes back (once), without the seats taken meanwhile.
   const restoreSavedSelection = useEffectEvent(() => {
@@ -100,6 +126,11 @@ export function SeatPicker({ showtimeId, startsAt, canceled, initialSeatMap, fet
     }
   })
   useEffect(() => restoreSavedSelection(), [showtimeId])
+
+  // A viewer with a hold here is the one who may need the dialog: fetch its code ahead of time.
+  useEffect(() => {
+    if (myHold) void loadActiveBookingDialog()
+  }, [myHold])
 
   useEffect(() => {
     if (justTaken.size === 0) return
@@ -229,6 +260,8 @@ export function SeatPicker({ showtimeId, startsAt, canceled, initialSeatMap, fet
   }
 
   const replacing = cancel.isPending || (dialogBookingId !== null && hold.isPending)
+  // Nothing left to pick — unless the viewer holds seats here themselves (their notice says so).
+  const soldOut = bookable && !myHold && seatMap.summary.available === 0
 
   return (
     <div className="flex flex-col gap-5">
@@ -248,9 +281,12 @@ export function SeatPicker({ showtimeId, startsAt, canceled, initialSeatMap, fet
         <Notice tone="destructive" icon={SearchXIcon} title="This showtime no longer exists.">
           Pick another showtime from the schedule.
         </Notice>
+      ) : soldOut ? (
+        <Notice icon={TicketXIcon} title="This showtime is sold out.">
+          Seats on hold go back on sale if they aren&apos;t paid for in time, and this map shows them as they do. Or
+          pick another showtime.
+        </Notice>
       ) : null}
-
-      {myHold ? <HoldNotice booking={myHold} /> : null}
 
       <div className="flex flex-col gap-4">
         <LiveStatus
@@ -272,6 +308,9 @@ export function SeatPicker({ showtimeId, startsAt, canceled, initialSeatMap, fet
         onSeatClick={handleSeatClick}
       />
 
+      {/* Under the map, not above it: it arrives after the session check, and there it pushes nothing out of place. */}
+      {myHold ? <HoldNotice booking={myHold} /> : null}
+
       <SelectionSummary
         seats={selectedSeats}
         currency={seatMap.currency}
@@ -285,14 +324,18 @@ export function SeatPicker({ showtimeId, startsAt, canceled, initialSeatMap, fet
         onContinue={handleContinue}
       />
 
-      <ActiveBookingDialog
-        bookingId={dialogBookingId}
-        selectedSeats={selectedSeats}
-        replacing={replacing}
-        onContinue={goToCheckout}
-        onReplace={(bookingId, active) => void handleReplace(bookingId, active)}
-        onClose={() => setDialogBookingId(null)}
-      />
+      {dialogMounted ? (
+        <Suspense fallback={null}>
+          <ActiveBookingDialog
+            bookingId={dialogBookingId}
+            selectedSeats={selectedSeats}
+            replacing={replacing}
+            onContinue={goToCheckout}
+            onReplace={(bookingId, active) => void handleReplace(bookingId, active)}
+            onClose={() => setDialogBookingId(null)}
+          />
+        </Suspense>
+      ) : null}
     </div>
   )
 }

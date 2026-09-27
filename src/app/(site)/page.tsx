@@ -9,7 +9,7 @@ import { MovieCard, MovieGrid, MovieGridSkeleton } from '@/components/catalog/mo
 import { ScheduleList, ScheduleListSkeleton } from '@/components/catalog/schedule-list'
 import { EmptyState, PageContainer, SectionHeader } from '@/components/layout/page'
 import { SectionErrorBoundary } from '@/components/layout/section-error'
-import { Button } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 
 const NOW_SHOWING_COUNT = 8
@@ -24,14 +24,15 @@ export default function HomePage() {
         </h1>
         <p className="max-w-xl text-lg text-pretty text-muted-foreground">{APP_DESCRIPTION}</p>
         <div className="flex flex-wrap gap-2">
-          <Button size="lg" nativeButton={false} render={<Link href="/schedule" />}>
+          {/* Links styled as buttons: they navigate, so they keep the link role. */}
+          <Link href="/schedule" className={buttonVariants({ size: 'lg' })}>
             <CalendarDaysIcon data-icon="inline-start" aria-hidden="true" />
             Today&apos;s schedule
-          </Button>
-          <Button size="lg" variant="outline" nativeButton={false} render={<Link href="/movies" />}>
+          </Link>
+          <Link href="/movies" className={buttonVariants({ size: 'lg', variant: 'outline' })}>
             <ClapperboardIcon data-icon="inline-start" aria-hidden="true" />
             Browse movies
-          </Button>
+          </Link>
         </div>
       </section>
 

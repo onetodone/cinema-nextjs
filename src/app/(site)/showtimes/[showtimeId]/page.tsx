@@ -6,7 +6,7 @@ import { getSeatMapSnapshot, getShowtime } from '@/lib/api/server'
 import type { Showtime } from '@/lib/api/types'
 import { parseId } from '@/lib/catalog'
 import { logger } from '@/lib/logger'
-import { formatLongDay, formatShowtime, formatShowtimeDateTime, localDateOf } from '@/lib/time'
+import { formatLongDay, formatShowtime, formatShowtimeDateTime, instantOf, localDateOf } from '@/lib/time'
 import { movieMeta } from '@/components/catalog/movie-card'
 import { BackLink } from '@/components/layout/back-link'
 import { PageContainer } from '@/components/layout/page'
@@ -43,7 +43,7 @@ export async function generateMetadata({ params }: PageProps<'/showtimes/[showti
 export default function ShowtimePage({ params }: PageProps<'/showtimes/[showtimeId]'>) {
   return (
     <PageContainer className="gap-6 pb-0 sm:pb-0">
-      <SectionErrorBoundary what="this showtime">
+      <SectionErrorBoundary what="this showtime" pageHeading>
         <Suspense fallback={<ShowtimeSkeleton />}>
           <ShowtimeView params={params} />
         </Suspense>
@@ -107,6 +107,7 @@ async function LiveSeatPicker({ showtime }: { showtime: Showtime }) {
       showtimeId={showtime.id}
       startsAt={showtime.starts_at}
       canceled={showtime.status === 'canceled'}
+      startedWhenFetched={snapshot.fetchedAt >= instantOf(showtime.starts_at)}
       initialSeatMap={snapshot.seatMap}
       fetchedAt={snapshot.fetchedAt}
     />

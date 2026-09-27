@@ -105,5 +105,34 @@
   }
   html {
     @apply font-sans;
+    /* What keyboard focus and in-page links scroll to never ends up under the sticky header (3.5rem)… */
+    scroll-padding-top: 4.5rem;
+  }
+  /* …or under the hold strip that phones show below it. */
+  @media (width < 40rem) {
+    html:has([data-hold-strip]) {
+      scroll-padding-top: 6.5rem;
+    }
+  }
+  /* Headings take focus after a navigation or a change on the page (RouteFocus, useFocusOnChange); they are not
+     controls, so no focus ring. */
+  :is(h1, h2)[tabindex='-1']:focus {
+    outline: none;
+  }
+}
+
+/*
+ * Reduced motion: every animation and transition finishes at once — spinners and skeletons stand still, dialogs,
+ * menus, and toasts appear without zooming or sliding. The durations are near zero rather than `none`, so code that
+ * waits for an animation or a transition to end (Base UI's exit animations) still gets its event.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

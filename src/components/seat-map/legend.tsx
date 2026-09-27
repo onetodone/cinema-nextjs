@@ -4,12 +4,14 @@ import { SEAT_TYPE_LABEL, type SeatState } from '@/lib/seat-map'
 import { SeatGlyph, seatClassName } from '@/components/seat-map/seat'
 import { cn } from '@/lib/utils'
 
+// "Held by you" comes last: it appears once the viewer's holds are known, after the page has painted, and at the end
+// of the list it moves no other entry.
 const STATES: { state: SeatState; label: string }[] = [
   { state: 'available', label: 'Available' },
   { state: 'selected', label: 'Your pick' },
-  { state: 'mine', label: 'Held by you' },
   { state: 'held', label: 'On hold' },
   { state: 'sold', label: 'Sold' },
+  { state: 'mine', label: 'Held by you' },
 ]
 
 const TYPE_ORDER: SeatType[] = ['standard', 'vip', 'accessible']

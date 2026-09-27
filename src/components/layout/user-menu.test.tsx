@@ -62,7 +62,8 @@ describe('UserMenu', () => {
     const user = userEvent.setup()
     render(<UserMenu />)
 
-    await user.click(screen.getByRole('button', { name: `Account: ${ANN.email}` }))
+    // The menu's code loads once someone is signed in.
+    await user.click(await screen.findByRole('button', { name: `Account: ${ANN.email}` }))
     expect(await screen.findByText(ANN.email)).toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: 'My bookings' })).toHaveAttribute('href', '/bookings')
     expect(screen.getByRole('menuitem', { name: 'Account' })).toHaveAttribute('href', '/account')

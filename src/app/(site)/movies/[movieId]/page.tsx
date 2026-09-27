@@ -50,7 +50,7 @@ export default function MoviePage({ params }: PageProps<'/movies/[movieId]'>) {
   return (
     <PageContainer className="gap-6">
       <BackLink href="/movies">All movies</BackLink>
-      <SectionErrorBoundary what="this movie">
+      <SectionErrorBoundary what="this movie" pageHeading>
         <Suspense fallback={<MovieDetailsSkeleton />}>
           <MovieView params={params} />
         </Suspense>

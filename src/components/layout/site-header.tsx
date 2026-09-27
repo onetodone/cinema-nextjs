@@ -34,8 +34,9 @@ export function SiteHeader() {
           <UserMenu />
         </div>
       </div>
-      {/* Phones have no room in the row: the hold gets a strip of its own. */}
-      <div className="sm:hidden">
+      {/* Phones have no room in the row: the hold gets a strip of its own, under the header and over the page's top
+          padding (as tall as the strip), so that its arrival after the session check moves nothing. */}
+      <div className="absolute inset-x-0 top-full sm:hidden">
         <ActiveHoldPill variant="bar" />
       </div>
     </header>

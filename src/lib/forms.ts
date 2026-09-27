@@ -1,11 +1,11 @@
-import type * as z from 'zod'
+import type * as z from 'zod/mini'
 import { isApiError } from '@/lib/api/errors'
 import { errorMessage, errorReference } from '@/lib/api/messages'
 
 /** What a form shows after a submit: a form-level message, messages per field (by input name), or success. */
 export type FormState = { error?: string; fieldErrors?: Record<string, string>; success?: boolean } | undefined
 
-export function zodFieldErrors(error: z.ZodError): Record<string, string> {
+export function zodFieldErrors(error: z.core.$ZodError): Record<string, string> {
   const fields: Record<string, string> = {}
   for (const issue of error.issues) {
     const key = issue.path.map((segment) => String(segment)).join('.') || '_'
@@ -43,9 +43,9 @@ export function toFormState(error: unknown): FormState {
  * A `useActionState` action: validates the form with `schema`, then runs `handler`. Validation failures and thrown
  * errors come back as form state, so the action never throws.
  */
-export function runFormAction<Schema extends z.ZodType>(
+export function runFormAction<Schema extends z.ZodMiniType>(
   schema: Schema,
-  handler: (values: z.output<Schema>) => Promise<FormState>,
+  handler: (values: z.infer<Schema>) => Promise<FormState>,
 ): (prevState: FormState, formData: FormData) => Promise<FormState> {
   return async (_prevState, formData) => {
     const parsed = schema.safeParse(Object.fromEntries(formData))

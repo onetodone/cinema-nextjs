@@ -15,6 +15,7 @@ import { seatNames } from '@/lib/seat-map'
 import { formatCountdown, formatDate, formatLongDay, formatShowtime, localDateOf } from '@/lib/time'
 import { useCancelBooking } from '@/hooks/use-cancel-booking'
 import { useCountdown } from '@/hooks/use-countdown'
+import { useFocusOnChange } from '@/hooks/use-focus-on-change'
 import { BookingNotFound } from '@/components/bookings/booking-not-found'
 import { BookingStatusBadge } from '@/components/bookings/booking-status-badge'
 import { TicketQr } from '@/components/bookings/ticket-qr'
@@ -49,7 +50,9 @@ function TicketLoader({ bookingId }: { bookingId: string }) {
   if (booking) return <BookingDetails booking={booking} />
   if (isApiError(error) && error.status === 404) return <BookingNotFound />
   if (error) {
-    return <LoadError what="this booking" error={error} onRetry={() => void refetch()} retrying={isRefetching} />
+    return (
+      <LoadError what="this booking" error={error} onRetry={() => void refetch()} retrying={isRefetching} pageHeading />
+    )
   }
   return <TicketSkeleton />
 }
@@ -59,13 +62,15 @@ function BookingDetails({ booking }: { booking: Booking }) {
   // A pending hold whose time is up is on its way out: the API's worker releases it within seconds.
   const status = booking.status === 'pending' && remaining === 0 ? 'expired' : booking.status
   const { showtime } = booking
+  // "Cancel hold" (and its dialog) goes away with the pending state: focus goes to the heading.
+  const headingRef = useFocusOnChange<HTMLHeadingElement>(status)
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-4">
         <BackLink href="/bookings">My bookings</BackLink>
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+          <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-semibold tracking-tight sm:text-4xl">
             {status === 'paid' ? 'Your ticket' : 'Your booking'}
           </h1>
           <BookingStatusBadge status={status} />
