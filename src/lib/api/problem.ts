@@ -65,8 +65,11 @@ interface ApiResult<T> {
   response: Response
 }
 
-/** Resolves an openapi-fetch call to its data, or throws an ApiError (a network failure included). */
-export async function unwrap<T>(pending: Promise<ApiResult<T>>): Promise<T> {
+/**
+ * Resolves an openapi-fetch call to its data and the answer itself (for its status and headers), or throws an
+ * ApiError (a network failure included).
+ */
+export async function unwrapWithResponse<T>(pending: Promise<ApiResult<T>>): Promise<{ data: T; response: Response }> {
   let result: ApiResult<T>
   try {
     result = await pending
@@ -75,7 +78,12 @@ export async function unwrap<T>(pending: Promise<ApiResult<T>>): Promise<T> {
     throw isApiError(cause) ? cause : networkError(cause)
   }
   if (result.error !== undefined || !result.response.ok) throw toApiError(result.response, result.error)
-  return result.data as T
+  return { data: result.data as T, response: result.response }
+}
+
+/** Resolves an openapi-fetch call to its data, or throws an ApiError (a network failure included). */
+export async function unwrap<T>(pending: Promise<ApiResult<T>>): Promise<T> {
+  return (await unwrapWithResponse(pending)).data
 }
 
 /** Like `unwrap`, but a 404 resolves to null: the resource does not exist. */

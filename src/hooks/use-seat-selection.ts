@@ -42,6 +42,18 @@ export function useSeatSelection(seatsById: ReadonlyMap<number, Seat>) {
   return {
     ids: current.ids,
     setIds: (ids: number[]) => setState((previous) => ({ ...previous, ids })),
+    /** Drops seats from the selection without a notice (the caller says why). */
+    remove: (seatIds: readonly number[]) =>
+      setState((previous) => ({ ...previous, ids: previous.ids.filter((id) => !seatIds.includes(id)) })),
     clear: () => setState((previous) => ({ ...previous, ids: [] })),
+    /**
+     * Picks a saved selection again, keeping only the seats that are still available; returns the others, which are
+     * left out.
+     */
+    restore: (seatIds: readonly number[]): Seat[] => {
+      const { ids, lost: gone } = reconcileSelection(seatIds, current.seatsById)
+      setState((previous) => ({ ...previous, ids }))
+      return gone
+    },
   }
 }

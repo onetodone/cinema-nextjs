@@ -6,9 +6,10 @@ export const MAX_SEATS_PER_BOOKING = 10
 
 /**
  * How a seat looks on the map. `available`, `held`, and `sold` come from the API; `selected` is the local
- * selection. (`mine` and `just-taken` join them with booking.)
+ * selection; `mine` is held by the viewer's own unpaid booking; `just-taken` flashes for a moment on seats that a
+ * hold attempt found taken.
  */
-export type SeatState = 'available' | 'selected' | 'held' | 'sold'
+export type SeatState = 'available' | 'selected' | 'held' | 'sold' | 'mine' | 'just-taken'
 
 export interface SeatRow {
   row: string
@@ -49,6 +50,8 @@ export const SEAT_STATE_LABEL: Record<SeatState, string> = {
   selected: 'selected',
   held: 'on hold',
   sold: 'sold',
+  mine: 'held by you',
+  'just-taken': 'just taken',
 }
 
 /** The accessible name of a seat button: "Row C, seat 7, VIP, $15.00, available". */

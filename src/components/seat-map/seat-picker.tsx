@@ -1,19 +1,39 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { AlertTriangleIcon, BanIcon, CircleDotIcon, ClockIcon } from 'lucide-react'
-import type { SeatMap as SeatMapData } from '@/lib/api/types'
+import { AlertTriangleIcon, BanIcon, CircleDotIcon, ClockIcon, SearchXIcon, TicketIcon } from 'lucide-react'
+import type { Booking, Seat, SeatMap as SeatMapData } from '@/lib/api/types'
+import { errorMessage } from '@/lib/api/messages'
+import { useAuth } from '@/lib/auth/context'
+import { loginHref } from '@/lib/auth/next-path'
+import { activeBookingFor, holdOutcome, isActiveBooking } from '@/lib/bookings'
 import { seatMapQuery } from '@/lib/queries/catalog'
-import { groupSeatsByRow, MAX_SEATS_PER_BOOKING, toggleSeat } from '@/lib/seat-map'
+import { queryKeys } from '@/lib/queries/keys'
+import { saveSelection, takeSavedSelection } from '@/lib/saved-selection'
+import { groupSeatsByRow, MAX_SEATS_PER_BOOKING, seatNames, toggleSeat } from '@/lib/seat-map'
+import { serverSkewMs } from '@/lib/server-clock'
+import { formatCountdown, remainingMs } from '@/lib/time'
+import { useActiveBookings } from '@/hooks/use-active-bookings'
+import { useCancelBooking } from '@/hooks/use-cancel-booking'
+import { useCountdown } from '@/hooks/use-countdown'
+import { useHoldSeats } from '@/hooks/use-hold-seats'
 import { useHasStarted } from '@/hooks/use-now'
 import { useSeatSelection } from '@/hooks/use-seat-selection'
+import { Notice } from '@/components/layout/notice'
+import { ActiveBookingDialog } from '@/components/seat-map/active-booking-dialog'
 import { SeatLegend } from '@/components/seat-map/legend'
 import { SeatMap } from '@/components/seat-map/seat-map'
-import { SelectionSummary } from '@/components/seat-map/selection-summary'
-import { cn } from '@/lib/utils'
+import { SelectionSummary, type SummaryError } from '@/components/seat-map/selection-summary'
+import { buttonVariants } from '@/components/ui/button'
+
+/** How long seats that a hold found taken keep flashing. */
+const JUST_TAKEN_MS = 4_000
+
+const NO_IDS: ReadonlySet<number> = new Set()
 
 interface SeatPickerProps {
   showtimeId: number
@@ -25,13 +45,21 @@ interface SeatPickerProps {
 }
 
 /**
- * The live seat map of a showtime with the local selection. The map polls while the showtime is bookable; seats
- * that someone else takes leave the selection by themselves.
+ * The live seat map of a showtime with the local selection, and the way on to checkout. The map polls while the
+ * showtime is bookable; seats that someone else takes leave the selection by themselves.
+ *
+ * "Continue" holds the picked seats and opens the checkout. A guest's pick is saved in this tab while they sign in,
+ * and picked again when they come back. Seats the viewer already holds show as theirs, with the way to their
+ * checkout.
  */
 export function SeatPicker({ showtimeId, startsAt, canceled, initialSeatMap, fetchedAt }: SeatPickerProps) {
   const router = useRouter()
+  const queryClient = useQueryClient()
+  const { status } = useAuth()
   const started = useHasStarted(startsAt)
-  const bookable = !canceled && !started
+  /** What a hold answer revealed: sales are over, or the showtime is gone. */
+  const [closed, setClosed] = useState<'not-bookable' | 'not-found' | null>(null)
+  const bookable = !canceled && !started && closed === null
 
   const { data: seatMap, isRefetchError } = useQuery({
     ...seatMapQuery(showtimeId, { live: bookable }),
@@ -48,21 +76,159 @@ export function SeatPicker({ showtimeId, startsAt, canceled, initialSeatMap, fet
     [seatMap.seats, selectedIds],
   )
 
+  const myHold = activeBookingFor(useActiveBookings(), showtimeId)
+  const mineIds = useMemo(() => (myHold ? new Set(myHold.seats.map((seat) => seat.id)) : NO_IDS), [myHold])
+
+  const hold = useHoldSeats(showtimeId)
+  const cancel = useCancelBooking()
+  const [holdError, setHoldError] = useState<SummaryError | null>(null)
+  const [justTaken, setJustTaken] = useState<ReadonlySet<number>>(NO_IDS)
+  const [dialogBookingId, setDialogBookingId] = useState<string | null>(null)
+
+  // A pick saved before signing in comes back (once), without the seats taken meanwhile.
+  const restoreSavedSelection = useEffectEvent(() => {
+    const saved = takeSavedSelection(showtimeId)
+    if (!saved || saved.length === 0) return
+    const gone = selection.restore(saved)
+    if (gone.length > 0) {
+      toast.warning(
+        gone.length === 1
+          ? `Seat ${seatNames(gone)} was taken while you were away`
+          : `Seats ${seatNames(gone)} were taken while you were away`,
+        { id: 'seats-taken', description: 'The rest of your pick is still here.' },
+      )
+    }
+  })
+  useEffect(() => restoreSavedSelection(), [showtimeId])
+
+  useEffect(() => {
+    if (justTaken.size === 0) return
+    const timer = setTimeout(() => setJustTaken(NO_IDS), JUST_TAKEN_MS)
+    return () => clearTimeout(timer)
+  }, [justTaken])
+
+  // Next keeps this page's state while the viewer is elsewhere: messages about the last attempt are stale by then.
+  useLayoutEffect(
+    () => () => {
+      setHoldError(null)
+      setJustTaken(NO_IDS)
+      setDialogBookingId(null)
+    },
+    [],
+  )
+
   function handleSeatClick(seatId: number) {
     const seat = seatsById.get(seatId)
-    if (!seat || !bookable) return
+    if (!seat || !bookable || hold.isPending) return
     const result = toggleSeat(selection.ids, seat)
     if (result.rejected === 'limit') {
       toast.warning(`You can pick up to ${MAX_SEATS_PER_BOOKING} seats per booking.`, { id: 'seat-limit' })
     } else if (!result.rejected) {
       selection.setIds(result.ids)
+      setHoldError(null)
     }
   }
 
-  function handleContinue() {
-    // Holding seats needs an account; sign-in comes back to this showtime.
-    router.push(`/login?next=${encodeURIComponent(`/showtimes/${showtimeId}`)}`)
+  function signInFirst(seatIds: readonly number[]) {
+    // Holding seats needs an account: the pick waits in this tab, and sign-in comes back here.
+    saveSelection(showtimeId, seatIds)
+    router.push(loginHref(`/showtimes/${showtimeId}`))
   }
+
+  function goToCheckout(bookingId: string) {
+    setDialogBookingId(null)
+    router.push(`/checkout/${bookingId}`)
+  }
+
+  function handleContinue() {
+    if (status === 'unauthenticated') {
+      signInFirst(selection.ids)
+      return
+    }
+    // One unpaid booking per showtime: ask first rather than send a hold that the API would refuse.
+    if (myHold && (myHold.status === 'processing' || holdTimeLeft(myHold) > 0)) {
+      setDialogBookingId(myHold.id)
+      return
+    }
+    void submitHold(selection.ids)
+  }
+
+  async function submitHold(seatIds: readonly number[], { retryWhenFreed = true } = {}) {
+    setHoldError(null)
+    let booking: Booking
+    try {
+      booking = await hold.mutateAsync(seatIds)
+    } catch (error) {
+      const outcome = holdOutcome(error)
+      switch (outcome.kind) {
+        case 'seats-taken':
+          handleSeatsTaken(outcome.seatIds)
+          return
+        case 'active-booking':
+          void queryClient.invalidateQueries({ queryKey: queryKeys.private.activeBookings() })
+          if (outcome.bookingId) setDialogBookingId(outcome.bookingId)
+          // The other booking ended as the API answered: the seats can be held now.
+          else if (retryWhenFreed) void submitHold(seatIds, { retryWhenFreed: false })
+          return
+        case 'closed':
+          setClosed('not-bookable')
+          return
+        case 'not-found':
+          setClosed('not-found')
+          return
+        case 'unknown-seat':
+          toast.error(errorMessage(error), { id: 'hold-failed' })
+          void queryClient.invalidateQueries({ queryKey: queryKeys.catalog.seatMap(showtimeId) })
+          return
+        case 'signed-out':
+          signInFirst(seatIds)
+          return
+        case 'busy':
+          setHoldError({ message: errorMessage(error) })
+          return
+        case 'failed':
+          setHoldError({ message: outcome.message, reference: outcome.reference })
+          return
+      }
+    }
+    // Next keeps this page while the checkout shows: without its pick, coming back shows the seats as the viewer's.
+    selection.clear()
+    setDialogBookingId(null)
+    router.push(`/checkout/${booking.id}`)
+  }
+
+  function handleSeatsTaken(seatIds: readonly number[]) {
+    const byOthers = seatIds.filter((id) => !mineIds.has(id))
+    selection.remove(seatIds)
+    void queryClient.invalidateQueries({ queryKey: queryKeys.catalog.seatMap(showtimeId) })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.private.activeBookings() })
+    const taken = byOthers.map((id) => seatsById.get(id)).filter((seat): seat is Seat => seat !== undefined)
+    if (taken.length === 0) {
+      toast.info('You already hold some of these seats.', { id: 'seats-taken' })
+      return
+    }
+    setJustTaken(new Set(byOthers))
+    toast.warning(
+      taken.length === 1 ? `Seat ${seatNames(taken)} was just taken` : `Seats ${seatNames(taken)} were just taken`,
+      { id: 'seats-taken', description: 'Someone else got there first. Pick other seats.' },
+    )
+  }
+
+  async function handleReplace(bookingId: string, active: boolean) {
+    const seatIds = selection.ids
+    if (active) {
+      try {
+        await cancel.mutateAsync({ bookingId, showtimeId })
+      } catch (error) {
+        setDialogBookingId(null)
+        toast.error(`Couldn’t release your seats. ${errorMessage(error)}`, { id: 'hold-failed' })
+        return
+      }
+    }
+    await submitHold(seatIds)
+  }
+
+  const replacing = cancel.isPending || (dialogBookingId !== null && hold.isPending)
 
   return (
     <div className="flex flex-col gap-5">
@@ -74,7 +240,17 @@ export function SeatPicker({ showtimeId, startsAt, canceled, initialSeatMap, fet
         <Notice icon={ClockIcon} title="This showtime has started.">
           Sales are closed. Pick a later showtime.
         </Notice>
+      ) : closed === 'not-bookable' ? (
+        <Notice tone="destructive" icon={BanIcon} title="Sales for this showtime are closed.">
+          It has started or was canceled. Pick another showtime.
+        </Notice>
+      ) : closed === 'not-found' ? (
+        <Notice tone="destructive" icon={SearchXIcon} title="This showtime no longer exists.">
+          Pick another showtime from the schedule.
+        </Notice>
       ) : null}
+
+      {myHold ? <HoldNotice booking={myHold} /> : null}
 
       <div className="flex flex-col gap-4">
         <LiveStatus
@@ -83,12 +259,14 @@ export function SeatPicker({ showtimeId, startsAt, canceled, initialSeatMap, fet
           available={seatMap.summary.available}
           total={seatMap.summary.total}
         />
-        <SeatLegend seats={seatMap.seats} currency={seatMap.currency} />
+        <SeatLegend seats={seatMap.seats} currency={seatMap.currency} showMine={mineIds.size > 0} />
       </div>
 
       <SeatMap
         rows={rows}
         selectedIds={selectedIds}
+        mineIds={mineIds}
+        justTakenIds={justTaken}
         currency={seatMap.currency}
         bookable={bookable}
         onSeatClick={handleSeatClick}
@@ -98,10 +276,64 @@ export function SeatPicker({ showtimeId, startsAt, canceled, initialSeatMap, fet
         seats={selectedSeats}
         currency={seatMap.currency}
         bookable={bookable}
-        onClear={selection.clear}
+        pending={hold.isPending || cancel.isPending}
+        error={holdError}
+        onClear={() => {
+          selection.clear()
+          setHoldError(null)
+        }}
         onContinue={handleContinue}
       />
+
+      <ActiveBookingDialog
+        bookingId={dialogBookingId}
+        selectedSeats={selectedSeats}
+        replacing={replacing}
+        onContinue={goToCheckout}
+        onReplace={(bookingId, active) => void handleReplace(bookingId, active)}
+        onClose={() => setDialogBookingId(null)}
+      />
     </div>
+  )
+}
+
+/** Time left on a hold by the server's clock, for event handlers (render reads the shared clock instead). */
+function holdTimeLeft(booking: Booking): number {
+  return remainingMs(booking.expires_at, Date.now(), serverSkewMs())
+}
+
+/** The viewer's own hold on this showtime, with the time it has left and the way to its checkout. */
+function HoldNotice({ booking }: { booking: Booking }) {
+  const remaining = useCountdown(booking.status === 'pending' ? booking.expires_at : null, booking.created_at)
+  // A hold whose time is up is on its way out (the API's worker releases it within seconds).
+  if (!isActiveBooking(booking) || remaining === 0) return null
+
+  const seats = seatNames(booking.seats)
+  const processing = booking.status === 'processing'
+  return (
+    <Notice
+      tone="highlight"
+      icon={TicketIcon}
+      role="none"
+      title={processing ? `Your payment for ${seats} is being processed.` : `You're holding ${seats}.`}
+      actions={
+        <Link href={`/checkout/${booking.id}`} className={buttonVariants({ size: 'lg' })}>
+          {processing ? 'View checkout' : 'Go to checkout'}
+        </Link>
+      }
+    >
+      {processing ? (
+        'The seats stay yours while it completes.'
+      ) : (
+        <>
+          They&apos;re yours for{' '}
+          <span className="font-medium text-foreground tabular-nums">
+            {remaining === null ? '…' : formatCountdown(remaining)}
+          </span>{' '}
+          more. Pay for them at checkout, or pick other seats to change your hold.
+        </>
+      )}
+    </Notice>
   )
 }
 
@@ -133,33 +365,5 @@ function LiveStatus({
         <span className="font-medium text-foreground">Live</span> · {counts}
       </span>
     </p>
-  )
-}
-
-function Notice({
-  tone = 'default',
-  icon: Icon,
-  title,
-  children,
-}: {
-  tone?: 'default' | 'destructive'
-  icon: React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }>
-  title: string
-  children: React.ReactNode
-}) {
-  return (
-    <div
-      role="status"
-      className={cn(
-        'flex gap-3 rounded-xl border p-4 text-sm',
-        tone === 'destructive' ? 'border-destructive/40 bg-destructive/10' : 'bg-muted/50',
-      )}
-    >
-      <Icon className={cn('mt-0.5 size-4 shrink-0', tone === 'destructive' && 'text-destructive')} aria-hidden />
-      <div className="flex flex-col gap-0.5">
-        <p className="font-medium">{title}</p>
-        <p className="text-muted-foreground">{children}</p>
-      </div>
-    </div>
   )
 }

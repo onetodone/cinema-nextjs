@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright'
-import { expect, test } from '@playwright/test'
+import { expect, test } from './support/test'
 
 test.describe('smoke', () => {
   test('the home page renders with the security headers', async ({ page }) => {

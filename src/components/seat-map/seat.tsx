@@ -1,17 +1,19 @@
 import { memo } from 'react'
-import { AccessibilityIcon, CheckIcon, Clock3Icon, XIcon } from 'lucide-react'
+import { AccessibilityIcon, CheckIcon, Clock3Icon, UserRoundIcon, XIcon } from 'lucide-react'
 import type { Seat as SeatData, SeatType } from '@/lib/api/types'
 import { seatLabel, type SeatState } from '@/lib/seat-map'
 import { cn } from '@/lib/utils'
 
-// A seat is never told apart by colour alone: states carry an icon (check, clock, cross) or the seat number, VIP
-// seats have a thick "headrest" top edge, and accessible seats show the wheelchair symbol.
+// A seat is never told apart by colour alone: states carry an icon (check, clock, cross, person) or the seat number,
+// VIP seats have a thick "headrest" top edge, and accessible seats show the wheelchair symbol.
 
 const STATE_CLASS: Record<SeatState, string> = {
   available: '',
   selected: 'border-primary bg-primary text-primary-foreground',
   held: 'border-dashed border-foreground/30 bg-transparent text-muted-foreground',
   sold: 'border-transparent bg-foreground/12 text-muted-foreground/80',
+  mine: 'border-dashed border-primary bg-primary/15 text-primary',
+  'just-taken': 'border-destructive bg-destructive/15 text-destructive motion-safe:animate-pulse',
 }
 
 const AVAILABLE_TYPE_CLASS: Record<SeatType, string> = {
@@ -32,7 +34,10 @@ export function seatClassName(state: SeatState, type: SeatType): string {
 export function SeatGlyph({ state, type, number }: { state: SeatState; type: SeatType; number?: number }) {
   if (state === 'selected') return <CheckIcon className="size-3.5" strokeWidth={3} aria-hidden="true" />
   if (state === 'held') return <Clock3Icon className="size-3" aria-hidden="true" />
-  if (state === 'sold') return <XIcon className="size-3" strokeWidth={2.5} aria-hidden="true" />
+  if (state === 'sold' || state === 'just-taken') {
+    return <XIcon className="size-3" strokeWidth={2.5} aria-hidden="true" />
+  }
+  if (state === 'mine') return <UserRoundIcon className="size-3" strokeWidth={2.5} aria-hidden="true" />
   if (type === 'accessible') return <AccessibilityIcon className="size-3.5" aria-hidden="true" />
   return number === undefined ? null : <>{number}</>
 }

@@ -1,6 +1,7 @@
 import { Suspense } from 'react'
 import Link from 'next/link'
 import { ClapperboardIcon } from 'lucide-react'
+import { ActiveHoldPill } from '@/components/layout/active-hold-pill'
 import { MainNav, MainNavFallback } from '@/components/layout/main-nav'
 import { ThemeToggle } from '@/components/layout/theme-toggle'
 import { UserMenu } from '@/components/layout/user-menu'
@@ -26,9 +27,16 @@ export function SiteHeader() {
           <MainNav />
         </Suspense>
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
+          <div className="hidden sm:contents">
+            <ActiveHoldPill variant="pill" />
+          </div>
           <ThemeToggle />
           <UserMenu />
         </div>
+      </div>
+      {/* Phones have no room in the row: the hold gets a strip of its own. */}
+      <div className="sm:hidden">
+        <ActiveHoldPill variant="bar" />
       </div>
     </header>
   )

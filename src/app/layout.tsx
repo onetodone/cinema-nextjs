@@ -4,6 +4,7 @@ import { GeistMono } from 'geist/font/mono'
 import { ThemeProvider } from '@/components/providers/theme-provider'
 import { QueryProvider } from '@/components/providers/query-provider'
 import { SessionExpiryListener } from '@/components/auth/session-expiry-listener'
+import { BookingSyncListener } from '@/components/providers/booking-sync'
 import { AuthProvider } from '@/lib/auth/context'
 import { Toaster } from '@/components/ui/sonner'
 import { APP_DESCRIPTION, APP_NAME, APP_URL } from '@/lib/site'
@@ -40,6 +41,7 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
             <AuthProvider>
               {children}
               <SessionExpiryListener />
+              <BookingSyncListener />
             </AuthProvider>
           </QueryProvider>
           <Toaster />

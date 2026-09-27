@@ -8,14 +8,25 @@ import { SeatButton } from '@/components/seat-map/seat'
 interface SeatMapProps {
   rows: readonly SeatRow[]
   selectedIds: ReadonlySet<number>
+  /** Seats of the viewer's own unpaid booking for this showtime. */
+  mineIds: ReadonlySet<number>
+  /** Seats that a hold attempt has just found taken (shown for a moment). */
+  justTakenIds: ReadonlySet<number>
   currency: string
   /** Whether seats can be picked at all (the showtime is scheduled and has not started). */
   bookable: boolean
   onSeatClick: (seatId: number) => void
 }
 
-function stateOf(seat: Seat, selectedIds: ReadonlySet<number>): SeatState {
+function stateOf(
+  seat: Seat,
+  selectedIds: ReadonlySet<number>,
+  mineIds: ReadonlySet<number>,
+  justTakenIds: ReadonlySet<number>,
+): SeatState {
   if (selectedIds.has(seat.id)) return 'selected'
+  if (justTakenIds.has(seat.id)) return 'just-taken'
+  if (mineIds.has(seat.id) && seat.status === 'held') return 'mine'
   return seat.status
 }
 
@@ -40,7 +51,7 @@ function seatIdOf(target: EventTarget): number | null {
  * sideways inside its frame on narrow screens. One seat at a time is in the tab order (roving tabindex); the arrow
  * keys, Home/End, and PageUp/PageDown move between seats, Space and Enter pick one.
  */
-export function SeatMap({ rows, selectedIds, currency, bookable, onSeatClick }: SeatMapProps) {
+export function SeatMap({ rows, selectedIds, mineIds, justTakenIds, currency, bookable, onSeatClick }: SeatMapProps) {
   const frameRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<HTMLDivElement>(null)
   const [focusId, setFocusId] = useState<number | null>(null)
@@ -96,7 +107,7 @@ export function SeatMap({ rows, selectedIds, currency, bookable, onSeatClick }: 
                 <RowLetter row={row} />
                 <div className="flex flex-1 justify-center gap-1">
                   {seats.map((seat) => {
-                    const state = stateOf(seat, selectedIds)
+                    const state = stateOf(seat, selectedIds, mineIds, justTakenIds)
                     return (
                       <SeatButton
                         key={seat.id}

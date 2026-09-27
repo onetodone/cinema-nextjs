@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 const STATES: { state: SeatState; label: string }[] = [
   { state: 'available', label: 'Available' },
   { state: 'selected', label: 'Your pick' },
+  { state: 'mine', label: 'Held by you' },
   { state: 'held', label: 'On hold' },
   { state: 'sold', label: 'Sold' },
 ]
@@ -31,12 +32,22 @@ function Swatch({ state, type, glyph = true }: { state: SeatState; type: SeatTyp
   )
 }
 
-export function SeatLegend({ seats, currency }: { seats: readonly Seat[]; currency: string }) {
+/** The seat states and types on the map; "Held by you" appears only while the viewer holds seats here. */
+export function SeatLegend({
+  seats,
+  currency,
+  showMine = false,
+}: {
+  seats: readonly Seat[]
+  currency: string
+  showMine?: boolean
+}) {
   const types = pricesByType(seats)
+  const states = showMine ? STATES : STATES.filter(({ state }) => state !== 'mine')
   return (
     <div className="flex flex-col gap-3 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
       <ul aria-label="Seat states" className="flex flex-wrap gap-x-4 gap-y-2">
-        {STATES.map(({ state, label }) => (
+        {states.map(({ state, label }) => (
           <li key={state} className="flex items-center gap-2">
             <Swatch state={state} type="standard" />
             {label}

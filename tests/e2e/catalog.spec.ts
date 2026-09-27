@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright'
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import type { APIRequestContext, Page } from '@playwright/test'
+import { expect, test } from './support/test'
 
 // Runs against the real local API and its seeded catalog (see README → Testing). Showtimes are read from the API, so
 // the specs do not depend on seed ids or on the time of day: they use tomorrow's first showtime, which is bookable.
@@ -87,15 +88,21 @@ test.describe('catalog', () => {
 
   test('seats are picked with the mouse and the keyboard', async ({ page, request }) => {
     const { items } = await tomorrowsShowtimes(request)
-    await page.goto(`/showtimes/${items[0].id}`)
+    const showtimeId = items[0].id
+    // Two free seats side by side: the booking specs sell seats of tomorrow's showtimes.
+    const map = (await (await request.get(`/v1/showtimes/${showtimeId}/seats`)).json()) as { seats: Seat[] }
+    const free = new Set(
+      map.seats.filter((seat) => seat.status === 'available').map((seat) => `${seat.row}${seat.number}`),
+    )
+    const seat = map.seats.find(
+      (candidate) =>
+        free.has(`${candidate.row}${candidate.number}`) && free.has(`${candidate.row}${candidate.number + 1}`),
+    )
+    expect(seat, 'two free seats side by side').toBeDefined()
+    await page.goto(`/showtimes/${showtimeId}`)
 
     // Pin the seat by id: its accessible name changes once it is picked.
-    const seatId = await page
-      .getByRole('group', { name: 'Seats' })
-      .getByRole('button', { name: /available$/ })
-      .first()
-      .getAttribute('data-seat-id')
-    const first = page.locator(`[data-seat-id="${seatId}"]`)
+    const first = page.locator(`[data-seat-id="${seat!.id}"]`)
     await first.click()
     await expect(first).toHaveAttribute('aria-pressed', 'true')
     await expect(page.getByText(/^1 seat · \$\d+\.\d{2}$/)).toBeVisible()

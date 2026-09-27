@@ -8,22 +8,26 @@ comes from the separate `cinema-api` Go service, which must be running for this 
 Admin screens are out of scope (admins use the API directly).
 
 > **Status:** under construction. Done: the app shell, security headers, the `/v1` proxy to the API (Sprint 0),
-> the public catalog with the live seat map (Sprint 1), and sign-in with sessions shared by every tab (Sprint 2).
-> Booking and payment, "My bookings", and the sessions list follow in later sprints; until booking lands,
-> "Continue" on the seat map goes through sign-in and back to the showtime.
+> the public catalog with the live seat map (Sprint 1), sign-in with sessions shared by every tab (Sprint 2), and
+> booking: holding seats, checkout with the test card, and the ticket (Sprint 3). The "My bookings" list and the
+> sessions list on the account page follow in Sprint 4.
 
 ## What it shows
 
-| Page              | What you see                                                                                                                                                              |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/`               | Now showing (the first movies) and today's showtimes by movie.                                                                                                            |
-| `/movies`         | Every movie, with "Load more" for the next pages.                                                                                                                         |
-| `/movies/<id>`    | A movie with its showtimes of the next two weeks, grouped by day.                                                                                                         |
-| `/schedule`       | One day's showtimes by movie: a two-week date strip (`?date=YYYY-MM-DD`) and a movie filter (`?movie=<id>`).                                                              |
-| `/showtimes/<id>` | The live seat map: pick up to 10 seats with the mouse or the keyboard (arrow keys, Home/End, PageUp/PageDown, Space). Canceled and started showtimes are shown as closed. |
-| `/login`          | Sign in; `?next=` (a path of this site) is where you go afterwards.                                                                                                       |
-| `/register`       | Create an account; you are signed in right after.                                                                                                                         |
-| `/account`        | Your profile, "Sign out" (this browser, every tab), and "Sign out everywhere" (every device). Signed-in users only.                                                       |
+| Page              | What you see                                                                                                                                                                                                                                                                              |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/`               | Now showing (the first movies) and today's showtimes by movie.                                                                                                                                                                                                                            |
+| `/movies`         | Every movie, with "Load more" for the next pages.                                                                                                                                                                                                                                         |
+| `/movies/<id>`    | A movie with its showtimes of the next two weeks, grouped by day.                                                                                                                                                                                                                         |
+| `/schedule`       | One day's showtimes by movie: a two-week date strip (`?date=YYYY-MM-DD`) and a movie filter (`?movie=<id>`).                                                                                                                                                                              |
+| `/showtimes/<id>` | The live seat map: pick up to 10 seats with the mouse or the keyboard (arrow keys, Home/End, PageUp/PageDown, Space), then "Continue" to hold them. A guest's pick waits in the tab while they sign in. Seats you hold show as yours. Canceled and started showtimes are shown as closed. |
+| `/checkout/<id>`  | Your hold: the seats and total, a countdown to the end of the hold, the payment method (the API's local test card: pick how the payment should go), "Pay", and "Cancel hold". Signed-in users only.                                                                                       |
+| `/bookings/<id>`  | The ticket once paid: a QR code of the booking, when, where, which seats, and the receipt; an unpaid booking leads back to its checkout. Signed-in users only.                                                                                                                            |
+| `/login`          | Sign in; `?next=` (a path of this site) is where you go afterwards.                                                                                                                                                                                                                       |
+| `/register`       | Create an account; you are signed in right after.                                                                                                                                                                                                                                         |
+| `/account`        | Your profile, "Sign out" (this browser, every tab), and "Sign out everywhere" (every device). Signed-in users only.                                                                                                                                                                       |
+
+While you hold seats, the header shows the time left and leads back to the checkout ("Seats held · 12:34").
 
 Times are the cinema's wall-clock times exactly as the API sends them (never converted to the browser's time
 zone), and prices are formatted from the API's integer cents.
@@ -116,7 +120,7 @@ Server Components ───────── fetch ${API_ORIGIN}/v1/*  (server-
   tab is visible (TanStack Query), and again on focus. The API's weak `ETag` and `Cache-Control: no-cache` make
   the browser revalidate by itself, so an unchanged map is a bodyless `304` through the proxy. Seats that someone
   else takes leave the local selection with a notice. A stale map never sells a seat twice: the API decides.
-- **Sign-in and sessions** (below).
+- **Sign-in and sessions** and **booking and payment** (below).
 - **Security headers.** A static CSP (no nonces, which would force every page to render per request and rule
   out prerendered shells), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, a strict referrer
   policy, and a restrictive `Permissions-Policy`. `img-src` allows any `https:` host because posters come from
@@ -158,6 +162,41 @@ refresh  (start-up · a call answered 401 · a timer shortly before expiry · th
   browser comes back online.
 - **Personal data is dropped** from the query cache whenever the signed-in user changes (sign-out, or another
   account signing in in another tab).
+
+### Booking and payment
+
+```
+seat map ── Continue ──▶ guest? ── save the pick (sessionStorage) ──▶ /login?next=… ──▶ back: pick restored
+                    └──▶ POST /v1/bookings  (Idempotency-Key per pick)
+                           201 ─▶ /checkout/<id>          409 SEAT_UNAVAILABLE ─▶ seats flash "just taken", leave the pick
+                           409 ACTIVE_BOOKING_EXISTS ─▶ "go to checkout" or "hold new seats instead" (cancel, then hold)
+checkout ── Pay ──▶ store the attempt (key, method, token) ──▶ POST /v1/bookings/<id>/payments
+                      200 ─▶ ticket    202 / PAYMENT_IN_PROGRESS ─▶ follow the booking (2 s → 10 s) until it settles
+                      402, 503 ─▶ message, next attempt with a new key    no answer, 5xx ─▶ "Retry payment", same key
+```
+
+- **Holding seats.** "Continue" sends the pick with an `Idempotency-Key` tied to the exact seats: sending the same
+  seats again after a lost answer (or after a `SEAT_BUSY` / `BOOKING_BUSY` answer, retried once by itself) reuses
+  it, so a hold is never made twice; another pick gets a new key. Seats someone else took leave the pick with a
+  notice. A viewer has one unpaid booking per showtime: the map shows its seats as theirs with the way to its
+  checkout, and picking others asks whether to keep the hold or release it and hold the new pick.
+- **Paying.** Every "Pay" is an attempt with its own key, stored in the tab's `sessionStorage` **before** it is sent.
+  When the answer is lost (the connection drops, a timeout, a server error, or a reload), the same attempt is sent
+  again — by "Retry payment", or by itself when the checkout opens again — and the API replays the first answer
+  instead of charging twice. A declined card or an unavailable provider ends the attempt: the next one gets a new
+  key. Changing the test card's outcome also starts a new attempt (the API refuses a key reused with another body).
+- **Payment methods** come from `GET /v1/payment-methods`, and each method id maps to a form in a small registry
+  (`src/components/checkout/payment-methods.tsx`). Only the API's local test provider exists: its form lists the
+  test tokens on purpose. A method the API enables but this app does not know is listed as unsupported.
+- **The countdown** runs to the hold's `expires_at` by the server's clock: the skew between this device and the
+  server is measured from the `Date` header of the API's answers, so a device clock that is off does not matter. It
+  warns in the last two minutes, and at zero the checkout closes at once (the API's worker releases the seats
+  within seconds). A payment in flight (`202`) is followed by polling the booking, every 2 seconds at first and
+  every 10 seconds later, for up to 3 minutes; the API's worker settles such payments within about 2.5 minutes by
+  default.
+- **Tabs stay in step.** Holding, canceling, and paying are announced on a second `BroadcastChannel`
+  (`cinema-sync`, ids only), and the other tabs refetch what changed: the header's hold indicator, an open
+  checkout, the seat map.
 
 ## Production topology
 
@@ -228,37 +267,48 @@ Commit the regenerated `src/lib/api/schema.d.ts`. It is excluded from Prettier a
 | `pnpm test`     | Vitest unit and component tests (jsdom), `src/**/*.test.{ts,tsx}`.                              |
 | `pnpm test:e2e` | Playwright end-to-end tests in Chromium, `tests/e2e/`. Starts `pnpm dev` unless one is running. |
 
-The end-to-end tests run against the **real local API** and its seeded catalog (and, from the booking sprint on,
-its worker), so start `cinema-api` first. They read showtimes from the API instead of assuming seed ids, and use
-tomorrow's first showtime so that it is still bookable. Set `E2E_BASE_URL` to test an already running deployment
-instead of starting the dev server. Install the browser once with `pnpm exec playwright install chromium`. On WSL
-or a fresh Linux, Chromium may also need system libraries: `sudo pnpm exec playwright install-deps chromium`.
+The end-to-end tests run against the **real local API**, its seeded catalog, and its worker, so start `cinema-api`
+first. They read showtimes from the API instead of assuming seed ids, and use tomorrow's showtimes so that they are
+still bookable; the booking specs pick random showtimes and seats, so parallel specs rarely want the same seat.
+Files from other hosts (the seed's poster URLs point at an image service) are answered with a blank image by the
+specs' `test` fixture (`tests/e2e/support/test.ts`), so no spec waits on a third party. Set `E2E_BASE_URL` to test an
+already running deployment instead of starting the dev server. Install the browser once with
+`pnpm exec playwright install chromium`. On WSL or a fresh Linux, Chromium may also need system libraries:
+`sudo pnpm exec playwright install-deps chromium`.
 
-The specs register throwaway accounts (`e2e-<time>-<random>@example.com`) in the local database; the API has no
-way to delete them. A full run signs up and signs in about 25 times, and with the API's default rate limits all of
-that counts against one per-address budget (30 per minute, shared by every request through the proxy), so a
-second run within a minute can hit `429`. Two auth specs depend on the API's settings:
+The specs register throwaway accounts (`e2e-<time>-<random>@example.com`) in the local database, and pay for some
+seats of tomorrow's showtimes with the test card; the API has no way to delete either. A full run signs up and signs
+in about 50 times, and with the API's default rate limits all of that counts against one per-address budget (30 per
+minute, shared by every request through the proxy), so use an API with rate limits off for a full run. Four specs
+depend on the API's settings and skip or adapt otherwise:
 
-- "tabs whose tokens expire together make one refresh" needs tokens of at most 60 seconds (`JWT_TTL=30s`) and is
-  skipped otherwise;
+- "tabs whose tokens expire together make one refresh" needs tokens of at most 60 seconds (`JWT_TTL=30s`);
 - "replaying an old refresh cookie" waits out the refresh grace window: `E2E_REFRESH_GRACE_SECONDS` (default `30`,
-  the API's default `REFRESH_GRACE`).
+  the API's default `REFRESH_GRACE`);
+- "a hold that runs out" needs holds of at most 60 seconds (`BOOKING_HOLD_TTL=30s`, it measures the length itself)
+  and the worker;
+- "a payment the provider does not answer" needs the worker and `E2E_PAYMENT_SETTLE_SECONDS`, how long the worker
+  takes to settle such a payment (about `PAYMENT_GRACE` + `RECONCILER_INTERVAL`).
 
-For a complete, repeatable run, start a second API with test settings next to your usual one, build the front
-against it, and point the specs at that build:
+For a complete, repeatable run, start a second API and worker with test settings next to your usual ones, build the
+front against that API, and point the specs at the build:
 
 ```bash
 # in cinema-api (same database and Redis; its own ports):
 set -a; . ./.env; set +a
-HTTP_ADDR=:8081 METRICS_ADDR=:9092 JWT_TTL=30s REFRESH_GRACE=2s \
+HTTP_ADDR=:8081 METRICS_ADDR=:9092 JWT_TTL=30s REFRESH_GRACE=2s BOOKING_HOLD_TTL=30s \
   AUTH_IP_RATE_LIMIT_PER_MIN=0 LOGIN_EMAIL_RATE_LIMIT_PER_MIN=0 AUTH_REFRESH_RATE_LIMIT_PER_MIN=0 \
   BOOKING_RATE_LIMIT_PER_MIN=0 go run ./cmd/api
+WORKER_METRICS_ADDR=:0 PAYMENT_GRACE=11s EXPIRER_INTERVAL=1s RECONCILER_INTERVAL=2s go run ./cmd/worker
 
 # in cinema-front:
 API_ORIGIN=http://localhost:8081 NEXT_PUBLIC_APP_URL=http://localhost:3002 pnpm build
 pnpm exec next start -p 3002
-E2E_BASE_URL=http://localhost:3002 E2E_REFRESH_GRACE_SECONDS=2 pnpm exec playwright test
+E2E_BASE_URL=http://localhost:3002 E2E_REFRESH_GRACE_SECONDS=2 E2E_PAYMENT_SETTLE_SECONDS=15 pnpm exec playwright test
 ```
+
+The test worker shares the database with your usual API: it also expires that API's overdue holds and settles its
+stuck payments, which is what its own worker would do.
 
 CI (`.github/workflows/ci.yml`) runs `lint:ci`, `typecheck`, `test`, and `build`. The end-to-end tests need the
 API and run locally.
@@ -279,6 +329,13 @@ API and run locally.
   sign-in.
 - A signed-out access token stops working at once only while the API's Redis is up; otherwise it works until it
   expires (15 minutes by default), though it can no longer be refreshed.
+- A payment attempt is remembered by the tab that made it (`sessionStorage`): a lost answer is recovered there, not
+  from another tab or browser. The booking itself shows every tab where the payment stands.
+- After 3 minutes the checkout stops following a payment in flight and says it will settle later; "Check again"
+  asks once more.
+- On phones, the "Seats held" strip appears under the header once the session is known, moving the page down by
+  its height.
+- Only the API's local test payment provider exists, so the checkout shows its test tokens on purpose.
 
 ## Scripts
 
@@ -304,17 +361,22 @@ src/components/providers/ theme and TanStack Query providers
 src/components/layout/    site header and navigation, user menu, footer, theme toggle, page layout, section error boundary
 src/components/auth/      guards, sign-out notices, the auth card and form message
 src/components/catalog/   poster, movie card and grid, showtime chip, schedule list, date strip, movie filter
-src/components/seat-map/  seat picker, seat map, seats, legend, selection summary
-src/hooks/                shared clock (has a showtime started?), seat selection, form focus
+src/components/seat-map/  seat picker, seat map, seats, legend, selection summary, "you already hold seats" dialog
+src/components/checkout/  booking summary, hold timer, payment-method registry and the test card, cancel hold
+src/components/bookings/  ticket QR code, booking status badge, booking not found
+src/hooks/                shared clocks (has a showtime started? hold countdowns), seat selection, holding seats,
+                          paying, canceling, active bookings, form focus
 src/lib/api/              generated types (schema.d.ts), server reads (server.ts), browser clients (public.ts,
                           client.ts), problem parsing, error messages
 src/lib/auth/             the session (session.ts), token store, hint cookie, broadcast channel, Web Lock,
                           ?next= checks, AuthProvider / useAuth
-src/lib/queries/          TanStack Query keys and options
-src/lib/                  time and money formatting, catalog and seat-map logic, forms, logger, site constants
+src/lib/queries/          TanStack Query keys and options; booking, payment, and account calls
+src/lib/payments/         payment attempts (idempotency keys kept per tab), the local test tokens
+src/lib/                  time and money formatting, catalog, seat-map, booking, and checkout logic, idempotency keys,
+                          server-clock skew, the cinema-sync channel, per-tab storage, forms, logger, site constants
 src/schemas/              zod schemas of the forms
-src/test/                 test helpers (query client, fake tabs: BroadcastChannel, Web Locks, API)
-tests/e2e/                Playwright specs
+src/test/                 test helpers (query client, fake tabs: BroadcastChannel, Web Locks, API; booking fixtures)
+tests/e2e/                Playwright specs; support/ (accounts, booking helpers, the fixture that stubs other hosts)
 next.config.ts            /v1 rewrite, security headers, Cache Components, standalone output
 instrumentation.ts        server error logging, console masking in production
 ```

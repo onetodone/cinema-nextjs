@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright'
-import { expect, test } from '@playwright/test'
+import { expect, stubThirdParty, test } from './support/test'
 import {
   accountButton,
   collectConsoleErrors,
@@ -171,10 +171,12 @@ test.describe('auth', () => {
     await expect(page.getByText(account.email)).toBeVisible()
   })
 
-  test('signing out everywhere ends the session on another device at once', async ({ browser, request }) => {
+  test('signing out everywhere ends the session on another device at once', async ({ browser, request, baseURL }) => {
     const account = await newAccount(request)
     const laptop = await browser.newContext()
     const phone = await browser.newContext()
+    await stubThirdParty(laptop, baseURL)
+    await stubThirdParty(phone, baseURL)
     const laptopPage = await laptop.newPage()
     const phonePage = await phone.newPage()
     await signInThroughUi(laptopPage, account)
